@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>공성 관리 도구</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 로그인 오버레이 -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <h2>공성 관리 도구</h2>
+      <p class="login-desc">접속을 위해 비밀번호를 입력해주세요.</p>
+      <form id="login-form">
+        <input
+          type="password"
+          id="login-password"
+          placeholder="예)1234"
+          autocomplete="off"
+        />
+        <button type="submit">접속</button>
+        <p id="login-error" class="login-error"></p>
+      </form>
+      <p class="login-note">
+        * 길드 내에서만 공유되는 비밀번호입니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>공성 관리 도구</h1>
+
+    <!-- 활동 중 멤버 + 주차 선택 병합 -->
+    <section id="active-members" class="card">
+      <div class="card-header">
+        <h2>활동 중 멤버 (요일별 점수)</h2>
+        <div class="week-controls">
+          <button type="button" id="prev-week-btn">◀ 이전 주</button>
+          <span id="week-label"></span>
+          <button type="button" id="next-week-btn">다음 주 ▶</button>
+        </div>
+      </div>
+      <p class="muted">
+        선택된 주차 기준으로 요일별 점수를 입력/조회합니다.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" data-sort-key="rank">순위</th>
+            <th class="sortable" data-sort-key="name">닉네임</th>
+            <th class="sortable" data-sort-key="role">직책</th>
+            <th class="sortable" data-sort-key="mon">월</th>
+            <th class="sortable" data-sort-key="tue">화</th>
+            <th class="sortable" data-sort-key="wed">수</th>
+            <th class="sortable" data-sort-key="thu">목</th>
+            <th class="sortable" data-sort-key="fri">금</th>
+            <th class="sortable" data-sort-key="sat">토</th>
+            <th class="sortable" data-sort-key="sun">일</th>
+            <th class="sortable" data-sort-key="total">합계</th>
+            <th class="sortable" data-sort-key="avg">평균</th>
+            <th>방어덱</th>
+          </tr>
+        </thead>
+        <tbody id="active-body"></tbody>
+      </table>
+      <p class="muted">
+        각 요일 칸에 점수를 입력하면 자동으로 합계 / 평균이 계산됩니다.
+        (합계 = SUM, 평균 = SUM / (0 초과 일수), 0 점은 미참여로 처리)
+      </p>
+
+      <!-- 주간 합계표 -->
+      <div class="summary-controls">
+        <h3>주간 합계표</h3>
+        <label>
+          기준점수:
+          <input type="text" id="threshold-input" class="summary-input" />
+        </label>
+        <span class="muted">
+          기준점수미달 = (0 초과 & 기준점수 미만)
+        </span>
+      </div>
+
+      <table id="week-summary-table" class="summary-table">
+        <thead>
+          <tr>
+            <th>구분</th>
+            <th>월</th>
+            <th>화</th>
+            <th>수</th>
+            <th>목</th>
+            <th>금</th>
+            <th>토</th>
+            <th>일</th>
+            <th>합계</th>
+            <th>평균</th>
+          </tr>
+        </thead>
+        <tbody id="week-summary-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 선택 주 탈퇴자 (단일 표) -->
+    <section id="left-members" class="card">
+      <h2>선택 주 탈퇴자</h2>
+      <table id="left-combined-table">
+        <thead>
+          <tr>
+            <th>닉네임</th>
+            <th>탈퇴구분</th>
+            <th>월</th>
+            <th>화</th>
+            <th>수</th>
+            <th>목</th>
+            <th>금</th>
+            <th>토</th>
+            <th>일</th>
+            <th>탈퇴일</th>
+            <th>방어덱</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody id="left-combined-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 멤버 추가 + 길드 현황 (관리자 전용) -->
+    <section id="member-form-section" class="card admin-only">
+      <h2>멤버 추가 / 길드 현황</h2>
+
+      <p>
+        활동 중 인원:
+        <strong><span id="active-count">0</span> / 30</strong>
+      </p>
+      <p id="limit-message" class="muted"></p>
+
+      <form id="member-form">
+        <div class="form-row">
+          <label for="member-name">닉네임</label>
+          <input type="text" id="member-name" required placeholder="예: 홍길동" />
+        </div>
+        <div class="form-row">
+          <label for="member-role">직책</label>
+          <select id="member-role">
+            <option value="길드장">길드장</option>
+            <option value="부길드장">부길드장</option>
+            <option value="길드원" selected>길드원</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="member-join-date">가입일</label>
+          <input type="date" id="member-join-date" />
+        </div>
+        <button type="submit" id="member-submit-btn">멤버 추가</button>
+      </form>
+      <p id="add-help" class="muted">
+        활동 인원이 30명을 넘으면 멤버 추가가 자동으로 막힙니다.
+      </p>
+    </section>
+
+    <!-- 멤버 누적 관리 (관리자 전용) -->
+    <section id="member-archive-section" class="card admin-only">
+      <h2>멤버 누적 관리</h2>
+      <p class="muted">
+        모든 멤버의 가입/탈퇴 이력을 관리합니다. 현 멤버가 항상 상단에 정렬됩니다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>번호</th>
+            <th>닉네임</th>
+            <th>직책</th>
+            <th>가입일</th>
+            <th>탈퇴일</th>
+            <th>상태</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody id="member-archive-body"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

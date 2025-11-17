@@ -1,0 +1,478 @@
+/* ===== 전체 레이아웃 (다크 테마) ===== */
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at top, #111827 0, #020617 45%, #000000 100%);
+  color: #e5e7eb;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 24px auto 32px;
+  padding: 0 16px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 28px;
+  letter-spacing: 1px;
+  color: #f9fafb;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+}
+
+/* ===== 로그인 오버레이 ===== */
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at top, rgba(10, 28, 86, 0.9), rgba(2, 6, 23, 0.98));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.login-card {
+  background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 55%),
+              #020617;
+  border-radius: 16px;
+  padding: 20px 22px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow:
+    0 20px 45px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(148, 163, 184, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+.login-card h2 {
+  margin: 0 0 10px;
+  text-align: center;
+  color: #f9fafb;
+}
+
+.login-desc {
+  text-align: center;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #d1d5db;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#login-password {
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background-color: #020617;
+  color: #e5e7eb;
+}
+
+#login-password::placeholder {
+  color: #6b7280;
+}
+
+.login-error {
+  min-height: 16px;
+  font-size: 12px;
+  color: #f87171;
+  text-align: center;
+}
+
+.login-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* ===== 카드 스타일 ===== */
+
+.card {
+  background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.06), transparent 55%),
+              radial-gradient(circle at bottom right, rgba(129, 140, 248, 0.05), transparent 55%),
+              #020617;
+  border-radius: 14px;
+  padding: 16px 14px;
+  margin-bottom: 18px;
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* 카드 헤더: 제목 + 주차 선택 영역 */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #e5e7eb;
+}
+
+/* ===== 주차 선택 영역 ===== */
+
+.week-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+#week-label {
+  font-weight: 600;
+  color: #f9fafb;
+}
+
+/* ===== 폼 스타일 ===== */
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+label {
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #d1d5db;
+}
+
+input,
+select,
+button {
+  padding: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background-color: #020617;
+  color: #e5e7eb;
+  box-sizing: border-box;
+}
+
+input::placeholder {
+  color: #6b7280;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid rgba(56, 189, 248, 0.7);
+  outline-offset: 1px;
+  border-color: rgba(56, 189, 248, 0.9);
+}
+
+/* ===== 버튼 (토트넘 네이비 톤) ===== */
+
+button {
+  cursor: pointer;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(to right, #0a1c56, #132257);
+  color: #f9fafb;
+  font-weight: 600;
+  box-shadow: 0 0 18px rgba(19, 34, 87, 0.6);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.7);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.5);
+}
+
+/* 주차 이동 버튼은 살짝 더 작게 */
+.week-controls button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ===== 테이블 ===== */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 13px;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 10px;
+  overflow: hidden;
+  table-layout: fixed; /* 가로폭 고정 */
+}
+
+/* 활동중 멤버 테이블은 조금 더 압축 */
+#active-members table th,
+#active-members table td {
+  padding: 3px 4px;
+  font-size: 12px;
+}
+
+thead {
+  background: linear-gradient(to right, rgba(10, 28, 86, 0.98), rgba(19, 34, 87, 0.98));
+}
+
+th,
+td {
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  padding: 4px 6px;
+  text-align: center;
+  color: #e5e7eb;
+}
+
+/* 헤더 텍스트 */
+th {
+  font-weight: 600;
+  color: #e5e7eb;
+  white-space: nowrap;
+}
+
+/* 짝/홀 행 구분 + 호버 */
+tbody tr:nth-child(even) {
+  background-color: rgba(15, 23, 42, 0.9);
+}
+
+tbody tr:nth-child(odd) {
+  background-color: rgba(17, 24, 39, 0.9);
+}
+
+tbody tr:hover {
+  background-color: rgba(30, 64, 175, 0.7);
+}
+
+/* 정렬 가능한 헤더 */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+th.sortable:hover {
+  background: linear-gradient(to bottom, rgba(30, 64, 175, 0.9), rgba(15, 23, 42, 0.9));
+}
+th.sortable.sort-asc::after {
+  content: " ▲";
+  font-size: 10px;
+  color: #38bdf8;
+}
+th.sortable.sort-desc::after {
+  content: " ▼";
+  font-size: 10px;
+  color: #38bdf8;
+}
+
+/* ===== 점수 입력 칸 (큰 숫자용) ===== */
+
+.score-input {
+  width: 72px; /* 줄여서 가로폭 감소 */
+  max-width: 100%;
+  text-align: right;
+  background-color: #020617;
+  border-radius: 6px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  padding: 3px 5px;
+  font-size: 12px;
+}
+
+/* 조회 전용 모드일 때 비활성 표시용 */
+.score-input.readonly {
+  background-color: rgba(15, 23, 42, 0.8);
+  color: #9ca3af;
+  cursor: default;
+}
+
+/* ===== 주간 합계표 컨트롤 ===== */
+
+.summary-controls {
+  margin-top: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.summary-controls h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #e5e7eb;
+}
+
+.summary-input {
+  width: 110px;
+  text-align: right;
+}
+
+/* 합계표 테이블 */
+.summary-table {
+  margin-top: 4px;
+}
+
+/* ===== 부가 텍스트 ===== */
+
+.muted {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* ===== 반응형 조정 ===== */
+
+@media (max-width: 1000px) {
+  .card {
+    padding: 14px 12px;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    padding: 3px 4px;
+  }
+
+  #active-members table th,
+  #active-members table td {
+    padding: 2px 3px;
+    font-size: 11px;
+  }
+
+  .score-input {
+    width: 64px;
+    padding: 3px;
+    font-size: 11px;
+  }
+
+  .summary-input {
+    width: 90px;
+    padding: 4px;
+    font-size: 12px;
+  }
+
+  button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .week-controls {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 800px) {
+  .card {
+    padding: 12px 10px;
+  }
+
+  table {
+    font-size: 11px;
+  }
+
+  th,
+  td {
+    padding: 2px 3px;
+  }
+
+  #active-members table th,
+  #active-members table td {
+    padding: 2px;
+    font-size: 10px;
+  }
+
+  .score-input {
+    width: 56px;
+    padding: 2px;
+    font-size: 10px;
+  }
+
+  .summary-input {
+    width: 80px;
+    padding: 3px;
+    font-size: 11px;
+  }
+
+  button {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .week-controls {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 650px) {
+  .container {
+    padding: 0 10px;
+  }
+
+  h1 {
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+
+  .card {
+    padding: 10px 8px;
+  }
+
+  table {
+    font-size: 10px;
+  }
+
+  th,
+  td {
+    padding: 2px;
+  }
+
+  #active-members table th,
+  #active-members table td {
+    padding: 1px;
+    font-size: 9px;
+  }
+
+  .score-input {
+    width: 48px;
+    padding: 2px;
+    font-size: 9px;
+  }
+
+  .summary-input {
+    width: 70px;
+    padding: 2px;
+    font-size: 10px;
+  }
+
+  button {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .week-controls {
+    font-size: 10px;
+  }
+}
