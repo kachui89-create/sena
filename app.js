@@ -702,6 +702,7 @@ function renderLeftMembers(members) {
     restoreBtn.textContent = "탈퇴 취소";
     restoreBtn.dataset.memberId = String(member.id);
     restoreBtn.classList.add("admin-only");
+    restoreBtn.classList.add("action-btn-small");
     restoreBtn.addEventListener("click", handleRestoreMember);
     actionTd.appendChild(restoreBtn);
     tr.appendChild(actionTd);
@@ -782,6 +783,7 @@ function renderMemberArchive(members) {
       rejoinBtn.textContent = "재가입";
       rejoinBtn.dataset.memberId = String(member.id);
       rejoinBtn.classList.add("admin-only");
+     + rejoinBtn.classList.add("action-btn-small");
       rejoinBtn.addEventListener("click", handleRestoreMember);
 
       const deleteBtn = document.createElement("button");
@@ -789,6 +791,7 @@ function renderMemberArchive(members) {
       deleteBtn.dataset.memberId = String(member.id);
       deleteBtn.classList.add("admin-only");
       deleteBtn.style.marginLeft = "4px";
+      deleteBtn.classList.add("action-btn-small", "delete");
       deleteBtn.addEventListener("click", handleDeleteMember);
 
       actionTd.appendChild(rejoinBtn);
@@ -798,6 +801,7 @@ function renderMemberArchive(members) {
       leaveBtn.textContent = "탈퇴 처리";
       leaveBtn.dataset.memberId = String(member.id);
       leaveBtn.classList.add("admin-only");
+      leaveBtn.classList.add("action-btn-small");
       leaveBtn.addEventListener("click", handleLeaveMember);
       actionTd.appendChild(leaveBtn);
     }
