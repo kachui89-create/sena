@@ -1,8 +1,35 @@
-// 공성 관리 도구 - LocalStorage + Firebase Firestore 동기화 버전
+// app.js (모듈 버전)
 // -------------------------------------------------------
-// - LocalStorage를 기본으로 사용
-// - window._fb (index.html에서 세팅) 가 있을 경우 Firestore와 동기화
-// - 어디서 접속해도 같은 데이터 사용 가능
+// - Firebase 모듈 CDN을 직접 import
+// - Firestore에 guildConfigs/default 문서로 통째 저장
+// - localStorage + Firestore 동기화 구조
+
+// ===== Firebase import & 초기화 =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+// 네 Firebase 설정값
+const firebaseConfig = {
+  apiKey: "AIzaSyBKvKAPMwG0FJQj7n3OmX7Ld3sUrPpqtQA",
+  authDomain: "sena-guild-tool.firebaseapp.com",
+  projectId: "sena-guild-tool",
+  storageBucket: "sena-guild-tool.firebasestorage.app",
+  messagingSenderId: "93989921944",
+  appId: "1:93989921944:web:2b3aa298d6f97481411ced",
+  measurementId: "G-5YSK93P66B",
+};
+
+// Firebase & Firestore 준비
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const remoteDocRef = doc(db, "guildConfigs", "default");
+console.log("✅ Firebase 초기화 완료(모듈+app.js)", fbApp);
 
 // ===== 로그인/권한 관련 상수 =====
 const STORAGE_KEY = "guildMembers";
@@ -35,67 +62,48 @@ let sortState = {
   dir: "desc", // 내림차순
 };
 
-// ===== Firebase / Firestore 연결 (window._fb에서 가져오기) =====
-const fb = window._fb || {};
-const db = fb.db || null;
-const fbDoc = fb.doc || null;
-const fbGetDoc = fb.getDoc || null;
-const fbSetDoc = fb.setDoc || null;
-const fbServerTimestamp = fb.serverTimestamp || null;
-
-const remoteEnabled = !!(db && fbDoc && fbGetDoc && fbSetDoc);
-const remoteDocRef = remoteEnabled ? fbDoc(db, "guildConfigs", "default") : null;
+// Firestore 저장 디바운스용 타이머
 let remoteSaveTimer = null;
 
-/**
- * Firestore → localStorage 로드
- * - members, threshold를 읽어와 localStorage에 덮어씀
- */
+/* ===== Firestore → localStorage 로드 ===== */
 async function loadRemoteState() {
-  if (!remoteEnabled || !remoteDocRef) return;
-
   try {
-    const snap = await fbGetDoc(remoteDocRef);
+    const snap = await getDoc(remoteDocRef);
     if (!snap.exists()) {
-      console.log("원격 문서가 없어, 현재는 로컬 데이터를 기준으로 동작합니다.");
+      console.log("원격 문서 없음(최초 실행일 수 있음) - 로컬 데이터로 시작합니다.");
       return;
     }
     const data = snap.data() || {};
-
     if (Array.isArray(data.members)) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data.members));
     }
     if (typeof data.threshold === "number") {
       localStorage.setItem(THRESHOLD_KEY, String(data.threshold));
     }
-
     console.log("원격 데이터 로드 완료");
   } catch (e) {
     console.error("원격 데이터 로드 실패:", e);
   }
 }
 
-/**
- * localStorage에 저장된 내용을 Firestore와 동기화 (디바운스)
- * @param {Array} normalizedMembers - normalizeMember가 적용된 멤버 배열
- */
+/* ===== localStorage → Firestore 저장(디바운스) ===== */
 function scheduleRemoteSave(normalizedMembers) {
-  if (!remoteEnabled || !remoteDocRef) return;
+  if (!remoteDocRef) return;
 
   if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
   remoteSaveTimer = setTimeout(async () => {
     try {
       const threshold = getScoreThreshold();
-      await fbSetDoc(remoteDocRef, {
+      await setDoc(remoteDocRef, {
         members: normalizedMembers,
         threshold,
-        updatedAt: fbServerTimestamp ? fbServerTimestamp() : new Date(),
+        updatedAt: serverTimestamp(),
       });
       console.log("원격 데이터 저장 완료");
     } catch (e) {
       console.error("원격 데이터 저장 실패:", e);
     }
-  }, 1000); // 1초 간 모아서 저장
+  }, 1000);
 }
 
 /* ===== 날짜 / 주차 관련 유틸 ===== */
@@ -317,7 +325,6 @@ function loadMembers() {
 function saveMembers(members) {
   const normalized = members.map((m) => normalizeMember(m));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  // Firebase에도 동기화 (설정된 경우에만)
   scheduleRemoteSave(normalized);
 }
 
@@ -1137,7 +1144,7 @@ function setupLogin() {
     overlay.style.display = "none";
     errorEl.textContent = "";
     input.value = "";
-    renderAll(); // 모드 적용까지 다시 렌더링
+    renderAll();
   });
 }
 
@@ -1162,7 +1169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupThresholdControls();
   setupSortControls();
 
-  // 1) 원격 데이터 → localStorage 로 덮어쓰기
+  // 1) Firestore → localStorage 로 덮어쓰기
   await loadRemoteState();
 
   // 2) UI 렌더링
