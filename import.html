@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>길드 데이터 일괄 업로드</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .import-container {
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.95);
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+      border: 1px solid rgba(148,163,184,0.4);
+    }
+    .import-container h1 {
+      text-align: center;
+      margin-bottom: 16px;
+      font-size: 22px;
+      color: #f9fafb;
+    }
+    .import-container h2 {
+      margin-top: 20px;
+      margin-bottom: 8px;
+      font-size: 16px;
+      color: #e5e7eb;
+    }
+    .import-container p {
+      font-size: 13px;
+      color: #d1d5db;
+      line-height: 1.5;
+    }
+    .import-form {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .import-form label {
+      font-size: 13px;
+      color: #e5e7eb;
+    }
+    #log {
+      margin-top: 16px;
+      padding: 10px;
+      background: #020617;
+      border-radius: 8px;
+      font-size: 12px;
+      max-height: 320px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #e5e7eb;
+      border: 1px solid rgba(55,65,81,0.9);
+    }
+    .back-link {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #93c5fd;
+      text-decoration: none;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+    code {
+      font-size: 12px;
+      background: rgba(15, 23, 42, 0.9);
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="import-container">
+    <h1>길드 데이터 일괄 업로드</h1>
+
+    <p>
+      기존 엑셀 데이터를 <strong>CSV 두 개</strong>로 나눈 뒤 업로드합니다.<br />
+      1) <code>members.csv</code> : 멤버 기본 정보 (닉네임, 직책, 가입일 등)<br />
+      2) <code>scores.csv</code> : 주차별 점수 + 방어덱 정보
+    </p>
+
+    <h2>1. members.csv (멤버 기본 정보)</h2>
+    <p>
+      헤더 예시:<br />
+      <code>name,role,joinDate,status,leaveWeekId,leaveType</code><br />
+      데이터 예시:<br />
+      <code>박대리,길드원,2024-10-01,active,,</code><br />
+      <code>Yujiru,길드원,2024-09-01,left,2024-11-04,강퇴</code>
+    </p>
+
+    <h2>2. scores.csv (주차별 점수)</h2>
+    <p>
+      헤더 예시:<br />
+      <code>name,weekId,mon,tue,wed,thu,fri,sat,sun,defense</code><br />
+      데이터 예시:<br />
+      <code>박대리,2024-11-04,2341943,1587835,1015346,2665014,2795452,2245482,2598493,Y</code>
+    </p>
+
+    <form class="import-form" onsubmit="return false;">
+      <label>
+        members.csv 선택:
+        <input type="file" id="members-file" accept=".csv" />
+      </label>
+      <label>
+        scores.csv 선택:
+        <input type="file" id="scores-file" accept=".csv" />
+      </label>
+      <button type="button" id="upload-btn">업로드 시작</button>
+    </form>
+
+    <a href="index.html" class="back-link">&larr; 메인 공성 관리 도구로 돌아가기</a>
+
+    <pre id="log"></pre>
+  </div>
+
+  <!-- Firebase + 업로드 로직 -->
+  <script type="module" src="import.js"></script>
+</body>
+</html>
