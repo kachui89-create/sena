@@ -1078,4 +1078,14 @@ document.addEventListener("DOMContentLoaded", () => {
   setupThresholdControls();
   setupSortControls();
   renderAll();
+  // 로그아웃 처리
+const logoutBtn = document.getElementById("logout-btn");
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+        sessionStorage.removeItem(MODE_KEY); // 세션 제거
+        location.reload(); // 페이지 새로고침 = 로그인창 다시 표시
+    });
+}
+
 });
+
