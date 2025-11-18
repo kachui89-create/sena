@@ -1,13 +1,17 @@
-// 공성 관리 도구 - 길드 멤버 점수 관리 (LocalStorage 사용)
+// 공성 관리 도구 - LocalStorage + Firebase Firestore 동기화 버전
+// -------------------------------------------------------
+// - LocalStorage를 기본으로 사용
+// - window._fb (index.html에서 세팅) 가 있을 경우 Firestore와 동기화
+// - 어디서 접속해도 같은 데이터 사용 가능
 
-// ====== 로그인/권한 관련 상수 ======
+// ===== 로그인/권한 관련 상수 =====
 const STORAGE_KEY = "guildMembers";
 const THRESHOLD_KEY = "guildScoreThreshold";
 const MODE_KEY = "guildViewMode"; // 'admin' | 'member'
 
 // 비밀번호 (영문자)
-const MEMBER_PASSWORD = "xhxmsja";  // 토트넘
-const ADMIN_PASSWORD = "fbwldwld";  // 류징징
+const MEMBER_PASSWORD = "xhxmsja"; // 토트넘
+const ADMIN_PASSWORD = "fbwldwld"; // 류징징
 
 const MAX_ACTIVE = 30;
 
@@ -19,7 +23,7 @@ const DAYS = [
   { key: "thu", label: "목" },
   { key: "fri", label: "금" },
   { key: "sat", label: "토" },
-  { key: "sun", label: "일" }
+  { key: "sun", label: "일" },
 ];
 
 // 선택된 주(월요일 기준 날짜 객체)
@@ -28,8 +32,71 @@ let selectedWeekDate = getThisWeekStartDate();
 // 정렬 상태
 let sortState = {
   key: "total", // 기본: 합계 기준
-  dir: "desc"   // 내림차순
+  dir: "desc", // 내림차순
 };
+
+// ===== Firebase / Firestore 연결 (window._fb에서 가져오기) =====
+const fb = window._fb || {};
+const db = fb.db || null;
+const fbDoc = fb.doc || null;
+const fbGetDoc = fb.getDoc || null;
+const fbSetDoc = fb.setDoc || null;
+const fbServerTimestamp = fb.serverTimestamp || null;
+
+const remoteEnabled = !!(db && fbDoc && fbGetDoc && fbSetDoc);
+const remoteDocRef = remoteEnabled ? fbDoc(db, "guildConfigs", "default") : null;
+let remoteSaveTimer = null;
+
+/**
+ * Firestore → localStorage 로드
+ * - members, threshold를 읽어와 localStorage에 덮어씀
+ */
+async function loadRemoteState() {
+  if (!remoteEnabled || !remoteDocRef) return;
+
+  try {
+    const snap = await fbGetDoc(remoteDocRef);
+    if (!snap.exists()) {
+      console.log("원격 문서가 없어, 현재는 로컬 데이터를 기준으로 동작합니다.");
+      return;
+    }
+    const data = snap.data() || {};
+
+    if (Array.isArray(data.members)) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.members));
+    }
+    if (typeof data.threshold === "number") {
+      localStorage.setItem(THRESHOLD_KEY, String(data.threshold));
+    }
+
+    console.log("원격 데이터 로드 완료");
+  } catch (e) {
+    console.error("원격 데이터 로드 실패:", e);
+  }
+}
+
+/**
+ * localStorage에 저장된 내용을 Firestore와 동기화 (디바운스)
+ * @param {Array} normalizedMembers - normalizeMember가 적용된 멤버 배열
+ */
+function scheduleRemoteSave(normalizedMembers) {
+  if (!remoteEnabled || !remoteDocRef) return;
+
+  if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
+  remoteSaveTimer = setTimeout(async () => {
+    try {
+      const threshold = getScoreThreshold();
+      await fbSetDoc(remoteDocRef, {
+        members: normalizedMembers,
+        threshold,
+        updatedAt: fbServerTimestamp ? fbServerTimestamp() : new Date(),
+      });
+      console.log("원격 데이터 저장 완료");
+    } catch (e) {
+      console.error("원격 데이터 저장 실패:", e);
+    }
+  }, 1000); // 1초 간 모아서 저장
+}
 
 /* ===== 날짜 / 주차 관련 유틸 ===== */
 
@@ -40,7 +107,7 @@ function getThisWeekStartDate() {
 
 function getWeekStartFromDate(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const day = d.getDay() === 0 ? 7 : d.getDay();
+  const day = d.getDay() === 0 ? 7 : d.getDay(); // 월=1 ~ 일=7
   const diff = day - 1;
   d.setDate(d.getDate() - diff);
   return d;
@@ -50,7 +117,7 @@ function getWeekIdFromDate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}`; // 해당 주의 월요일 날짜
 }
 
 function getWeekIdFromDateStr(dateStr) {
@@ -90,7 +157,7 @@ function getThisWeekInfo() {
   const d = getThisWeekStartDate();
   return {
     weekId: getWeekIdFromDate(d),
-    label: getWeekLabelFromDate(d)
+    label: getWeekLabelFromDate(d),
   };
 }
 
@@ -190,13 +257,14 @@ function normalizeMember(member) {
     leaveWeekId: member.leaveWeekId ?? null,
     leaveType: member.leaveType ?? null,
     scoresByWeek: member.scoresByWeek ?? {},
-    defenseDeckByWeek: member.defenseDeckByWeek ?? {}
+    defenseDeckByWeek: member.defenseDeckByWeek ?? {},
   };
 
   const thisWeekId = getThisWeekInfo().weekId;
   let scoresByWeek = base.scoresByWeek;
   if (!scoresByWeek || typeof scoresByWeek !== "object") scoresByWeek = {};
 
+  // 구버전 데이터(scoress) → thisWeek로 마이그레이션
   if (Object.keys(scoresByWeek).length === 0 && member.scores && typeof member.scores === "object") {
     const migrated = {};
     DAYS.forEach(({ key }) => {
@@ -231,7 +299,7 @@ function getDefenseDeckForWeek(member, weekId) {
   return !!map[lastKey];
 }
 
-/* ===== LocalStorage ===== */
+/* ===== LocalStorage + Firestore 동기화 ===== */
 
 function loadMembers() {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -249,6 +317,8 @@ function loadMembers() {
 function saveMembers(members) {
   const normalized = members.map((m) => normalizeMember(m));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  // Firebase에도 동기화 (설정된 경우에만)
+  scheduleRemoteSave(normalized);
 }
 
 /* ===== 주차 포함 여부 ===== */
@@ -570,6 +640,7 @@ function renderWeekSummary(members) {
   const avgBelow =
     daysWithParticipants === 0 ? null : totalBelow / daysWithParticipants;
 
+  // 1) 합계 행
   const sumTr = document.createElement("tr");
   const sumLabelTd = document.createElement("td");
   sumLabelTd.textContent = "합계";
@@ -588,6 +659,7 @@ function renderWeekSummary(members) {
   sumTr.appendChild(sumAvgTd);
   tbody.appendChild(sumTr);
 
+  // 2) 등급 행
   const gradeTr = document.createElement("tr");
   const gradeLabelTd = document.createElement("td");
   gradeLabelTd.textContent = "등급";
@@ -605,6 +677,7 @@ function renderWeekSummary(members) {
   gradeTr.appendChild(gradeAvgTd);
   tbody.appendChild(gradeTr);
 
+  // 3) 참여인원 행
   const partTr = document.createElement("tr");
   const partLabelTd = document.createElement("td");
   partLabelTd.textContent = "참여인원";
@@ -624,6 +697,7 @@ function renderWeekSummary(members) {
   partTr.appendChild(partAvgTd);
   tbody.appendChild(partTr);
 
+  // 4) 기준점수미달 행
   const belowTr = document.createElement("tr");
   const belowLabelTd = document.createElement("td");
   belowLabelTd.textContent = "기준점수미달";
@@ -661,9 +735,7 @@ function renderLeftMembers(members) {
 
   const leftThisWeek = members
     .map((m) => normalizeMember(m))
-    .filter(
-      (m) => m.status === "left" && m.leaveWeekId === selectedWeekId
-    );
+    .filter((m) => m.status === "left" && m.leaveWeekId === selectedWeekId);
 
   leftThisWeek.forEach((member) => {
     const scores = member.scoresByWeek[selectedWeekId] || defaultWeekScores();
@@ -783,15 +855,15 @@ function renderMemberArchive(members) {
       rejoinBtn.textContent = "재가입";
       rejoinBtn.dataset.memberId = String(member.id);
       rejoinBtn.classList.add("admin-only");
-     + rejoinBtn.classList.add("action-btn-small");
+      rejoinBtn.classList.add("action-btn-small");
       rejoinBtn.addEventListener("click", handleRestoreMember);
 
       const deleteBtn = document.createElement("button");
       deleteBtn.textContent = "완전 삭제";
       deleteBtn.dataset.memberId = String(member.id);
       deleteBtn.classList.add("admin-only");
-      deleteBtn.style.marginLeft = "4px";
       deleteBtn.classList.add("action-btn-small", "delete");
+      deleteBtn.style.marginLeft = "4px";
       deleteBtn.addEventListener("click", handleDeleteMember);
 
       actionTd.appendChild(rejoinBtn);
@@ -822,7 +894,7 @@ function renderMemberArchive(members) {
 
 function chooseLeaveType() {
   const isKick = window.confirm(
-    "강퇴로 처리하시겠습니까?\n[확인] 강퇴 / [취소] 자진탈퇴"
+    "강퇴로 처리하시겠습니까?\n[확인] 강퇴 / [취소] 자진탈퇴",
   );
   return isKick ? "강퇴" : "자진탈퇴";
 }
@@ -951,7 +1023,7 @@ function setupMemberForm() {
       leaveWeekId: null,
       leaveType: null,
       scoresByWeek: { [selectedWeekId]: defaultWeekScores() },
-      defenseDeckByWeek: {}
+      defenseDeckByWeek: {},
     });
 
     members.push(newMember);
@@ -1069,23 +1141,30 @@ function setupLogin() {
   });
 }
 
+/* ===== 로그아웃 버튼 ===== */
+
+function setupLogout() {
+  const logoutBtn = document.getElementById("logout-btn");
+  if (!logoutBtn) return;
+  logoutBtn.addEventListener("click", () => {
+    sessionStorage.removeItem(MODE_KEY);
+    location.reload();
+  });
+}
+
 /* ===== 초기화 ===== */
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   setupLogin();
+  setupLogout();
   setupMemberForm();
   setupWeekControls();
   setupThresholdControls();
   setupSortControls();
+
+  // 1) 원격 데이터 → localStorage 로 덮어쓰기
+  await loadRemoteState();
+
+  // 2) UI 렌더링
   renderAll();
-  // 로그아웃 처리
-const logoutBtn = document.getElementById("logout-btn");
-if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-        sessionStorage.removeItem(MODE_KEY); // 세션 제거
-        location.reload(); // 페이지 새로고침 = 로그인창 다시 표시
-    });
-}
-
 });
-
