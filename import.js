@@ -1,5 +1,5 @@
 // import.js
-// members.csv + scores.csv → Firestore(guildMembers 컬렉션) 업로드 도구
+// members.csv + scores.csv → Firestore(guildMembers 컬렉션) + localStorage 업로드 도구
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
 import {
@@ -7,8 +7,6 @@ import {
   collection,
   doc,
   getDocs,
-  query,
-  where,
   setDoc,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
@@ -27,8 +25,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// guildMembers 컬렉션 이름 (필요하면 app.js와 맞게 수정)
+// Firestore 컬렉션 / localStorage 키 (app.js와 동일하게 맞추기)
 const COLLECTION_NAME = "guildMembers";
+const STORAGE_KEY = "guildMembers";
 
 /* ========= 공통 유틸 ========= */
 
@@ -59,8 +58,7 @@ function parseCsv(text) {
 }
 
 function getIndex(header, key) {
-  const idx = header.indexOf(key);
-  return idx;
+  return header.indexOf(key);
 }
 
 function isValidDateStr(str) {
@@ -230,7 +228,7 @@ async function importMembersCsv(file, mapByName) {
 async function importScoresCsv(file, mapByName) {
   if (!file) {
     log("scores.csv 파일이 선택되지 않아 이 단계는 건너뜁니다.");
-    return;
+    return mapByName;
   }
 
   log(`scores.csv 읽는 중: ${file.name} (${file.size} bytes)`);
@@ -341,6 +339,7 @@ async function importScoresCsv(file, mapByName) {
   }
 
   log(`scores.csv 처리 완료 → 성공 ${success}건 / 실패 ${fail}건`);
+  return mapByName;
 }
 
 /* ========= 메인 업로드 흐름 ========= */
@@ -362,10 +361,20 @@ async function handleUpload() {
     memberIndex = await importMembersCsv(membersFile, memberIndex);
 
     // 2단계: scores.csv (있으면 실행)
-    await importScoresCsv(scoresFile, memberIndex);
+    memberIndex = await importScoresCsv(scoresFile, memberIndex);
+
+    // 🔹 3단계: Firestore에 반영된 최종 데이터를 localStorage에도 저장
+    const membersArray = Array.from(memberIndex.values()).map((entry) => entry.data);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(membersArray));
+      log(`로컬 저장소(${STORAGE_KEY})에 ${membersArray.length}명 저장 완료.`);
+    } catch (e) {
+      console.error(e);
+      log(`⚠ localStorage 저장 중 오류: ${e.message}`);
+    }
 
     log("=== 전체 업로드 작업 완료 ===");
-    alert("업로드 작업이 완료되었습니다. 로그를 확인해주세요.");
+    alert("업로드 작업이 완료되었습니다. (원격 + 로컬 반영)");
   } catch (err) {
     console.error(err);
     log(`❌ 전체 처리 중 오류 발생: ${err.message}`);
