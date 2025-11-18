@@ -182,49 +182,10 @@
     </section>
   </div>
 
-        <!-- Firebase CDN (모듈 방식) -->
-    <script type="module">
-      // Firebase SDK import (모듈 CDN)
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-      import {
-        getFirestore,
-        doc,
-        getDoc,
-        setDoc,
-        serverTimestamp,
-      } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-
-      // 네 프로젝트 설정값
-      const firebaseConfig = {
-        apiKey: "AIzaSyBKvKAPMwG0FJQj7n3OmX7Ld3sUrPpqtQA",
-        authDomain: "sena-guild-tool.firebaseapp.com",
-        projectId: "sena-guild-tool",
-        storageBucket: "sena-guild-tool.firebasestorage.app",
-        messagingSenderId: "93989921944",
-        appId: "1:93989921944:web:2b3aa298d6f97481411ced",
-        measurementId: "G-5YSK93P66B",
-      };
-
-      // Firebase 초기화
-      const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-
-      // 👉 app.js에서 쓸 수 있도록 전역(window)에 저장
-      window._fb = {
-        app,
-        db,
-        doc,
-        getDoc,
-        setDoc,
-        serverTimestamp,
-      };
-
-      console.log("✅ Firebase 초기화 완료(모듈 CDN)", app);
-    </script>
-
     <!-- 기존 길드 관리 로직 -->
     <script src="app.js"></script>
   </body>
 </html>
+
 
 
