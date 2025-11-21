@@ -1,17 +1,10 @@
-// app.js (모듈 버전)
-// -------------------------------------------------------
-// - Firebase 모듈 CDN을 직접 import
-// - Firestore에 guildConfigs/default 문서로 통째 저장
-// - localStorage + Firestore 동기화 구조
-
-// ===== Firebase import & 초기화 =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
 import {
   getFirestore,
+  collection,
   doc,
-  getDoc,
+  getDocs,
   setDoc,
-  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
 // 네 Firebase 설정값
@@ -25,20 +18,59 @@ const firebaseConfig = {
   measurementId: "G-5YSK93P66B",
 };
 
-// Firebase & Firestore 준비
-const fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(fbApp);
-const remoteDocRef = doc(db, "guildConfigs", "default");
-console.log("✅ Firebase 초기화 완료(모듈+app.js)", fbApp);
+let db = null;
+const COLLECTION_NAME = "guildMembers";
 
-// ===== 로그인/권한 관련 상수 =====
+async function initFirebase() {
+  try {
+    if (!firebaseConfig || !firebaseConfig.projectId) {
+      console.warn("firebaseConfig가 설정되지 않아 로컬 모드로 실행합니다.");
+      return;
+    }
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    console.log("Firebase 초기화 완료");
+  } catch (e) {
+    console.error("Firebase 초기화 실패:", e);
+    db = null;
+  }
+}
+
+async function syncMembersFromRemote() {
+  if (!db) {
+    console.warn("Firestore 미초기화 상태 → 원격 동기화 생략");
+    return;
+  }
+  try {
+    const colRef = collection(db, COLLECTION_NAME);
+    const snap = await getDocs(colRef);
+    const members = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      // 문서 ID와 데이터 안의 id 중 하나라도 사용
+      const member = normalizeMember({
+        ...data,
+        id: data.id || docSnap.id,
+      });
+      members.push(member);
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+    console.log(`원격 멤버 ${members.length}명 로드 및 로컬 저장 완료`);
+  } catch (e) {
+    console.error("원격 멤버 로드 실패:", e);
+  }
+}
+
+// 공성 관리 도구 - 길드 멤버 점수 관리 (LocalStorage + Firestore 사용)
+
+// ====== 로그인/권한 관련 상수 ======
 const STORAGE_KEY = "guildMembers";
 const THRESHOLD_KEY = "guildScoreThreshold";
 const MODE_KEY = "guildViewMode"; // 'admin' | 'member'
 
 // 비밀번호 (영문자)
-const MEMBER_PASSWORD = "xhxmsja"; // 토트넘
-const ADMIN_PASSWORD = "fbwldwld"; // 류징징
+const MEMBER_PASSWORD = "xhxmsja";  // 토트넘
+const ADMIN_PASSWORD = "fbwldwld";  // 류징징
 
 const MAX_ACTIVE = 30;
 
@@ -53,79 +85,30 @@ const DAYS = [
   { key: "sun", label: "일" },
 ];
 
-// 선택된 주(월요일 기준 날짜 객체)
-let selectedWeekDate = getThisWeekStartDate();
-
-// 정렬 상태
-let sortState = {
-  key: "total", // 기본: 합계 기준
-  dir: "desc", // 내림차순
-};
-
-// Firestore 저장 디바운스용 타이머
-let remoteSaveTimer = null;
-
-/* ===== Firestore → localStorage 로드 ===== */
-async function loadRemoteState() {
-  try {
-    const snap = await getDoc(remoteDocRef);
-    if (!snap.exists()) {
-      console.log("원격 문서 없음(최초 실행일 수 있음) - 로컬 데이터로 시작합니다.");
-      return;
-    }
-    const data = snap.data() || {};
-    if (Array.isArray(data.members)) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.members));
-    }
-    if (typeof data.threshold === "number") {
-      localStorage.setItem(THRESHOLD_KEY, String(data.threshold));
-    }
-    console.log("원격 데이터 로드 완료");
-  } catch (e) {
-    console.error("원격 데이터 로드 실패:", e);
-  }
-}
-
-/* ===== localStorage → Firestore 저장(디바운스) ===== */
-function scheduleRemoteSave(normalizedMembers) {
-  if (!remoteDocRef) return;
-
-  if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
-  remoteSaveTimer = setTimeout(async () => {
-    try {
-      const threshold = getScoreThreshold();
-      await setDoc(remoteDocRef, {
-        members: normalizedMembers,
-        threshold,
-        updatedAt: serverTimestamp(),
-      });
-      console.log("원격 데이터 저장 완료");
-    } catch (e) {
-      console.error("원격 데이터 저장 실패:", e);
-    }
-  }, 1000);
-}
-
-/* ===== 날짜 / 주차 관련 유틸 ===== */
-
-function getThisWeekStartDate() {
-  const now = new Date();
-  return getWeekStartFromDate(now);
-}
+// ====== 날짜/주차 유틸 ======
 
 function getWeekStartFromDate(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const day = d.getDay() === 0 ? 7 : d.getDay(); // 월=1 ~ 일=7
-  const diff = day - 1;
-  d.setDate(d.getDate() - diff);
+  const d = new Date(date);
+  const day = d.getDay(); // 0=일, 1=월, ...
+  const diff = (day === 0 ? -6 : 1 - day); // 월요일 기준
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function getWeekIdFromDate(date) {
+function getThisWeekStartDate() {
+  return getWeekStartFromDate(new Date());
+}
+
+function formatDateYYYYMMDD(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`; // 해당 주의 월요일 날짜
+  return `${year}-${month}-${day}`;
+}
+
+function getWeekIdFromDate(date) {
+  return formatDateYYYYMMDD(date);
 }
 
 function getWeekIdFromDateStr(dateStr) {
@@ -147,15 +130,16 @@ function getWeekLabelFromDate(date) {
   const year = date.getFullYear();
   const monthIdx = date.getMonth();
   const month = String(monthIdx + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
   const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];
   const weekday = weekdayNames[date.getDay()];
 
   const dayOfMonth = date.getDate();
   const weekNo = Math.floor((dayOfMonth - 1) / 7) + 1;
 
-  return `${year}년 ${month}월 ${day}일 (${weekday}) ${weekNo}주차`;
+  return `${year}년 ${month}월 ${dayOfMonth}일 (${weekday}) ${weekNo}주차`;
 }
+
+let selectedWeekDate = getThisWeekStartDate();
 
 function getSelectedWeekId() {
   return getWeekIdFromDate(selectedWeekDate);
@@ -169,88 +153,36 @@ function getThisWeekInfo() {
   };
 }
 
-function renderWeekLabel() {
-  const labelEl = document.getElementById("week-label");
-  if (!labelEl) return;
-  labelEl.textContent = getWeekLabelFromDate(selectedWeekDate);
+function moveWeek(offset) {
+  const d = new Date(selectedWeekDate);
+  d.setDate(d.getDate() + offset * 7);
+  selectedWeekDate = getWeekStartFromDate(d);
 }
 
-function addDays(date, days) {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-/* ===== 숫자 / 점수 관련 유틸 ===== */
-
+// 오늘 날짜 문자열
 function getTodayStr() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatDateYYYYMMDD(new Date());
 }
 
-function formatNumber(n) {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "";
-  return n.toLocaleString("ko-KR");
+// ===== 숫자 유틸 =====
+
+function formatNumber(num) {
+  if (typeof num !== "number" || Number.isNaN(num)) return "";
+  return num.toLocaleString("ko-KR");
 }
+
+// ===== 기본 점수 구조 =====
 
 function defaultWeekScores() {
-  const scores = {};
-  DAYS.forEach(({ key }) => {
-    scores[key] = null;
-  });
-  return scores;
-}
-
-function calcScoreSummary(scores) {
-  let total = 0;
-  let count = 0;
-
-  DAYS.forEach(({ key }) => {
-    const v = scores ? scores[key] : null;
-    if (typeof v === "number" && !Number.isNaN(v) && v > 0) {
-      total += v;
-      count += 1;
-    }
-  });
-
-  const avg = count === 0 ? null : total / count;
-  return { total, avg, count };
-}
-
-function gradeForScore(score) {
-  if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) {
-    return "";
-  }
-  if (score >= 100000000) return "EX+";
-  if (score >= 75000000) return "EX";
-  if (score >= 50000000) return "SSS";
-  if (score >= 30000000) return "SS";
-  if (score >= 15000000) return "S";
-  if (score >= 10000000) return "A";
-  if (score >= 7500000) return "B";
-  if (score >= 5000000) return "C";
-  if (score >= 2500000) return "D";
-  return "F";
-}
-
-/* ===== 기준점수 (로컬 저장) ===== */
-
-function getScoreThreshold() {
-  const raw = localStorage.getItem(THRESHOLD_KEY);
-  if (!raw) return 300000;
-  const n = Number(raw);
-  if (Number.isNaN(n) || n < 0) return 300000;
-  return n;
-}
-
-function setScoreThreshold(value) {
-  const n = Number(value);
-  const safe = Number.isNaN(n) || n < 0 ? 300000 : Math.round(n);
-  localStorage.setItem(THRESHOLD_KEY, String(safe));
-  return safe;
+  return {
+    mon: null,
+    tue: null,
+    wed: null,
+    thu: null,
+    fri: null,
+    sat: null,
+    sun: null,
+  };
 }
 
 /* ===== 멤버 정규화 + 방어덱 ===== */
@@ -272,7 +204,7 @@ function normalizeMember(member) {
   let scoresByWeek = base.scoresByWeek;
   if (!scoresByWeek || typeof scoresByWeek !== "object") scoresByWeek = {};
 
-  // 구버전 데이터(scoress) → thisWeek로 마이그레이션
+  // 예전 구조(scores: {mon, ...})에서 넘어온 경우 마이그레이션
   if (Object.keys(scoresByWeek).length === 0 && member.scores && typeof member.scores === "object") {
     const migrated = {};
     DAYS.forEach(({ key }) => {
@@ -282,32 +214,42 @@ function normalizeMember(member) {
     scoresByWeek[thisWeekId] = migrated;
   }
 
-  const normalizedScoresByWeek = {};
-  for (const weekId in scoresByWeek) {
-    if (!Object.prototype.hasOwnProperty.call(scoresByWeek, weekId)) continue;
-    const src = scoresByWeek[weekId] || {};
-    const dst = {};
-    DAYS.forEach(({ key }) => {
-      const v = src[key];
-      dst[key] = typeof v === "number" && !Number.isNaN(v) && v > 0 ? v : null;
-    });
-    normalizedScoresByWeek[weekId] = dst;
-  }
+  base.scoresByWeek = scoresByWeek;
+  return base;
+}
 
-  return { ...base, scoresByWeek: normalizedScoresByWeek };
+function getScoresForWeek(member, weekId) {
+  const scoresByWeek = member.scoresByWeek || {};
+  const weekScores = scoresByWeek[weekId] || {};
+  const result = { ...defaultWeekScores() };
+
+  DAYS.forEach(({ key }) => {
+    const v = weekScores[key];
+    result[key] =
+      typeof v === "number" && !Number.isNaN(v) && v > 0 ? v : null;
+  });
+
+  return result;
 }
 
 function getDefenseDeckForWeek(member, weekId) {
   const map = member.defenseDeckByWeek || {};
-  if (Object.prototype.hasOwnProperty.call(map, weekId)) return !!map[weekId];
-  const keys = Object.keys(map).filter((k) => k <= weekId);
-  if (keys.length === 0) return false;
-  keys.sort();
-  const lastKey = keys[keys.length - 1];
-  return !!map[lastKey];
+  return Boolean(map[weekId] || false);
 }
 
-/* ===== LocalStorage + Firestore 동기화 ===== */
+/* ===== 점수 합계/평균 계산 ===== */
+
+function calcWeekSummary(scores) {
+  const arr = DAYS.map(({ key }) => scores[key] ?? null);
+  const valid = arr.filter(
+    (v) => typeof v === "number" && !Number.isNaN(v) && v > 0
+  );
+  const total = valid.reduce((sum, v) => sum + v, 0);
+  const avg = valid.length > 0 ? Math.floor(total / valid.length) : 0;
+  return { total, avg };
+}
+
+/* ===== 로컬 + Firestore 저장소 연동 ===== */
 
 function loadMembers() {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -324,8 +266,23 @@ function loadMembers() {
 
 function saveMembers(members) {
   const normalized = members.map((m) => normalizeMember(m));
+  // 1차: 로컬스토리지에 저장 (기존 로직 유지)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  scheduleRemoteSave(normalized);
+
+  // 2차: Firestore에 동기화 (비동기, 호출 측에서는 await 필요 없음)
+  if (!db) return;
+  (async () => {
+    try {
+      const colRef = collection(db, COLLECTION_NAME);
+      for (const member of normalized) {
+        const docId = String(member.id);
+        await setDoc(doc(colRef, docId), member, { merge: true });
+      }
+      console.log("원격 저장 완료 (멤버 수:", normalized.length, ")");
+    } catch (e) {
+      console.error("원격 저장 중 오류:", e);
+    }
+  })();
 }
 
 /* ===== 주차 포함 여부 ===== */
@@ -338,66 +295,26 @@ function isMemberInWeekForScore(member, weekId) {
   return true;
 }
 
-function isMemberInWeekForActiveTable(member, weekId) {
-  const joinWeekId = getWeekIdFromDateStr(member.joinDate);
-  const leaveWeekId = member.leaveWeekId || null;
-  if (joinWeekId && weekId < joinWeekId) return false;
-  if (leaveWeekId && weekId >= leaveWeekId) return false;
-  if (member.status !== "active") return false;
-  return true;
+function isMemberInThisWeek(member) {
+  const weekId = getSelectedWeekId();
+  return isMemberInWeekForScore(member, weekId);
 }
 
-/* ===== 상단 요약 ===== */
+/* ===== 컷 기준 ===== */
 
-function renderSummary(members) {
-  const active = members.filter((m) => m.status === "active");
-  const activeCount = active.length;
+function loadThreshold() {
+  const raw = localStorage.getItem(THRESHOLD_KEY);
+  if (!raw) return 0;
+  const n = Number(raw);
+  return Number.isNaN(n) ? 0 : n;
+}
 
-  const activeCountEl = document.getElementById("active-count");
-  const limitMessageEl = document.getElementById("limit-message");
-  const addHelpEl = document.getElementById("add-help");
-  const submitBtn = document.getElementById("member-submit-btn");
-
-  if (activeCountEl) activeCountEl.textContent = String(activeCount);
-  if (!submitBtn || !limitMessageEl || !addHelpEl) return;
-
-  if (activeCount >= MAX_ACTIVE) {
-    submitBtn.disabled = true;
-    limitMessageEl.textContent =
-      "활동 인원이 30명에 도달했습니다. 인원이 줄어야 신규 멤버를 추가할 수 있습니다.";
-    addHelpEl.textContent = "탈퇴/재가입 또는 삭제로 인원을 조정해 주세요.";
+function saveThreshold(value) {
+  const n = Number(value);
+  if (Number.isNaN(n) || n < 0) {
+    localStorage.removeItem(THRESHOLD_KEY);
   } else {
-    submitBtn.disabled = false;
-    limitMessageEl.textContent = "";
-    addHelpEl.textContent =
-      "활동 인원이 30명을 넘으면 멤버 추가가 자동으로 막힙니다.";
-  }
-}
-
-/* ===== 정렬 ===== */
-
-function getSortValue(entry, key) {
-  const { scores, summary, member } = entry;
-  switch (key) {
-    case "name":
-      return member.name || "";
-    case "role":
-      return member.role || "";
-    case "total":
-      return summary.total;
-    case "avg":
-      return summary.avg ?? -Infinity;
-    case "mon":
-    case "tue":
-    case "wed":
-    case "thu":
-    case "fri":
-    case "sat":
-    case "sun":
-      return scores[key] ?? 0;
-    case "rank":
-    default:
-      return summary.total;
+    localStorage.setItem(THRESHOLD_KEY, String(n));
   }
 }
 
@@ -419,143 +336,429 @@ function applyMode(mode) {
     el.style.display = isAdmin ? "" : "none";
   });
 
-  document.querySelectorAll(".score-input").forEach((input) => {
-    input.disabled = !isAdmin;
-    if (!isAdmin) {
-      input.classList.add("readonly");
-    } else {
-      input.classList.remove("readonly");
-    }
-  });
-
-  document
-    .querySelectorAll("input[type='checkbox'][data-member-id]")
-    .forEach((cb) => {
-      cb.disabled = !isAdmin;
-    });
-
-  document.querySelectorAll("button.admin-only").forEach((btn) => {
-    btn.style.display = isAdmin ? "" : "none";
-  });
-
-  const thresholdInput = document.getElementById("threshold-input");
-  if (thresholdInput) {
-    thresholdInput.disabled = !isAdmin;
+  const label = document.getElementById("mode-label");
+  if (label) {
+    label.textContent = `권한: ${isAdmin ? "관리자(류징징)" : "길드원(토트넘)"}`;
   }
 }
 
-/* ===== 활동 멤버 렌더링 ===== */
+/* ===== 정렬 관련 ===== */
+
+let currentSortKey = "name"; // 'name' | 'total' | 'defense'
+let currentSortDir = "asc";  // 'asc' | 'desc'
+
+function sortMembers(members, weekId) {
+  const arr = [...members];
+  arr.sort((a, b) => {
+    const scoresA = getScoresForWeek(a, weekId);
+    const scoresB = getScoresForWeek(b, weekId);
+    const summaryA = calcWeekSummary(scoresA);
+    const summaryB = calcWeekSummary(scoresB);
+
+    let cmp = 0;
+    switch (currentSortKey) {
+      case "total":
+        cmp = summaryB.total - summaryA.total;
+        break;
+      case "defense": {
+        const defA = getDefenseDeckForWeek(a, weekId) ? 1 : 0;
+        const defB = getDefenseDeckForWeek(b, weekId) ? 1 : 0;
+        cmp = defB - defA;
+        if (cmp === 0) {
+          cmp = summaryB.total - summaryA.total;
+        }
+        break;
+      }
+      case "name":
+      default:
+        cmp = a.name.localeCompare(b.name, "ko");
+        break;
+    }
+
+    if (currentSortDir === "desc") {
+      cmp = -cmp;
+    }
+    return cmp;
+  });
+  return arr;
+}
+
+function setSort(key) {
+  if (currentSortKey === key) {
+    currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
+  } else {
+    currentSortKey = key;
+    currentSortDir = "asc";
+  }
+}
+
+function updateSortIndicators() {
+  const buttons = document.querySelectorAll(".sort-btn");
+  buttons.forEach((btn) => {
+    const key = btn.dataset.sortKey;
+    if (key === currentSortKey) {
+      btn.classList.add("active");
+      btn.textContent =
+        key === "name"
+          ? `닉네임 정렬 (${currentSortDir === "asc" ? "↑" : "↓"})`
+          : key === "total"
+          ? `총점 정렬 (${currentSortDir === "asc" ? "↑" : "↓"})`
+          : `방덱 우선 (${currentSortDir === "asc" ? "↑" : "↓"})`;
+    } else {
+      btn.classList.remove("active");
+      btn.textContent =
+        key === "name"
+          ? "닉네임 정렬"
+          : key === "total"
+          ? "총점 정렬"
+          : "방덱 참여 우선";
+    }
+  });
+}
+
+/* ===== 렌더링 ===== */
+
+function renderWeekLabel() {
+  const labelEl = document.getElementById("week-label");
+  if (!labelEl) return;
+  labelEl.textContent = getWeekLabelFromDate(selectedWeekDate);
+}
+
+function renderSummary(members) {
+  const weekId = getSelectedWeekId();
+  const activeMembers = members.filter((m) =>
+    isMemberInWeekForScore(m, weekId)
+  );
+
+  const activeCount = activeMembers.length;
+
+  let totalScore = 0;
+  let totalDaysCount = 0;
+  let defenseCount = 0;
+
+  activeMembers.forEach((member) => {
+    const scores = getScoresForWeek(member, weekId);
+    const summary = calcWeekSummary(scores);
+    totalScore += summary.total;
+    if (summary.total > 0) totalDaysCount++;
+    if (getDefenseDeckForWeek(member, weekId)) defenseCount++;
+  });
+
+  const avgScore =
+    activeCount > 0 ? Math.floor(totalScore / activeCount) : 0;
+
+  const activeCountEl = document.getElementById("active-count");
+  const totalScoreEl = document.getElementById("total-score");
+  const avgScoreEl = document.getElementById("avg-score");
+  const defenseCountEl = document.getElementById("defense-count");
+
+  if (activeCountEl) activeCountEl.textContent = String(activeCount);
+  if (totalScoreEl) totalScoreEl.textContent = formatNumber(totalScore);
+  if (avgScoreEl) avgScoreEl.textContent = formatNumber(avgScore);
+  if (defenseCountEl) defenseCountEl.textContent = String(defenseCount);
+}
 
 function renderActiveMembers(members) {
-  const tbody = document.getElementById("active-body");
+  const tbody = document.getElementById("active-members-body");
   if (!tbody) return;
   tbody.innerHTML = "";
 
-  const selectedWeekId = getSelectedWeekId();
+  const weekId = getSelectedWeekId();
+  const threshold = loadThreshold();
 
-  const activeEntries = members
-    .map((m) => normalizeMember(m))
-    .filter((m) => isMemberInWeekForActiveTable(m, selectedWeekId))
-    .map((m) => {
-      let scores = m.scoresByWeek[selectedWeekId];
-      if (!scores) scores = defaultWeekScores();
-      const summary = calcScoreSummary(scores);
-      const defense = getDefenseDeckForWeek(m, selectedWeekId);
-      return { member: m, scores, summary, defense };
-    });
+  const activeMembers = members.filter((m) =>
+    isMemberInWeekForScore(m, weekId)
+  );
 
-  activeEntries.sort((a, b) => {
-    const va = getSortValue(a, sortState.key);
-    const vb = getSortValue(b, sortState.key);
-    if (typeof va === "string" || typeof vb === "string") {
-      const sa = String(va);
-      const sb = String(vb);
-      const res = sa.localeCompare(sb, "ko-KR");
-      return sortState.dir === "asc" ? res : -res;
-    }
-    const na = Number(va);
-    const nb = Number(vb);
-    if (na === nb) return 0;
-    return sortState.dir === "asc" ? na - nb : nb - na;
-  });
+  const sorted = sortMembers(activeMembers, weekId);
 
-  activeEntries.forEach((entry, index) => {
-    const { member, scores, summary, defense } = entry;
+  sorted.forEach((member, index) => {
+    const scores = getScoresForWeek(member, weekId);
+    const summary = calcWeekSummary(scores);
+    const defense = getDefenseDeckForWeek(member, weekId);
+
     const tr = document.createElement("tr");
+    tr.dataset.memberId = member.id;
 
-    const rankTd = document.createElement("td");
-    rankTd.textContent = String(index + 1);
+    if (summary.total > 0 && summary.total < threshold) {
+      tr.classList.add("below-threshold");
+    }
+
+    const idxTd = document.createElement("td");
+    idxTd.textContent = String(index + 1);
+    tr.appendChild(idxTd);
+
     const nameTd = document.createElement("td");
     nameTd.textContent = member.name;
+    tr.appendChild(nameTd);
+
     const roleTd = document.createElement("td");
     roleTd.textContent = member.role;
-
-    tr.appendChild(rankTd);
-    tr.appendChild(nameTd);
     tr.appendChild(roleTd);
+
+    const joinTd = document.createElement("td");
+    joinTd.textContent = member.joinDate || "";
+    tr.appendChild(joinTd);
+
+    const leaveTd = document.createElement("td");
+    leaveTd.textContent = member.leaveWeekId || "";
+    tr.appendChild(leaveTd);
+
+    const statusTd = document.createElement("td");
+    statusTd.textContent =
+      member.status === "left" ? "탈퇴" : "활동중";
+    tr.appendChild(statusTd);
 
     DAYS.forEach(({ key }) => {
       const td = document.createElement("td");
+      const v = scores[key];
       const input = document.createElement("input");
       input.type = "text";
       input.inputMode = "numeric";
-      input.className = "score-input";
-      input.dataset.memberId = String(member.id);
-      input.dataset.dayKey = key;
-
-      const v = scores[key];
+      input.pattern = "[0-9,]*";
       input.value =
         typeof v === "number" && !Number.isNaN(v) && v > 0
           ? formatNumber(v)
           : "";
+      input.dataset.dayKey = key;
+      input.dataset.memberId = member.id;
 
-      input.addEventListener("change", handleScoreChange);
+      input.addEventListener("change", handleScoreInputChange);
+
       td.appendChild(input);
       tr.appendChild(td);
     });
 
     const totalTd = document.createElement("td");
-    totalTd.textContent = formatNumber(summary.total);
+    totalTd.textContent =
+      summary.total > 0 ? formatNumber(summary.total) : "";
+    tr.appendChild(totalTd);
+
     const avgTd = document.createElement("td");
-    if (summary.count === 0 || summary.avg === null) {
-      avgTd.textContent = "";
+    avgTd.textContent =
+      summary.avg > 0 ? formatNumber(summary.avg) : "";
+    tr.appendChild(avgTd);
+
+    const cutTd = document.createElement("td");
+    if (threshold > 0 && summary.total > 0) {
+      cutTd.textContent =
+        summary.total >= threshold ? "O" : "X";
     } else {
-      avgTd.textContent = formatNumber(Math.round(summary.avg));
+      cutTd.textContent = "";
     }
+    tr.appendChild(cutTd);
 
     const defenseTd = document.createElement("td");
-    const defenseCheckbox = document.createElement("input");
-    defenseCheckbox.type = "checkbox";
-    defenseCheckbox.dataset.memberId = String(member.id);
-    defenseCheckbox.checked = !!defense;
-    defenseCheckbox.addEventListener("change", handleDefenseToggle);
-    defenseTd.appendChild(defenseCheckbox);
-
-    tr.appendChild(totalTd);
-    tr.appendChild(avgTd);
+    const defCheckbox = document.createElement("input");
+    defCheckbox.type = "checkbox";
+    defCheckbox.checked = defense;
+    defCheckbox.dataset.memberId = member.id;
+    defCheckbox.addEventListener("change", handleDefenseToggle);
+    defenseTd.appendChild(defCheckbox);
     tr.appendChild(defenseTd);
+
+    const actionTd = document.createElement("td");
+    actionTd.classList.add("admin-only");
+
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "정보";
+    editBtn.addEventListener("click", () =>
+      fillMemberFormForEdit(member)
+    );
+    actionTd.appendChild(editBtn);
+
+    const leftBtn = document.createElement("button");
+    leftBtn.textContent = "탈퇴";
+    leftBtn.addEventListener("click", () =>
+      markMemberLeft(member)
+    );
+    actionTd.appendChild(leftBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "삭제";
+    deleteBtn.addEventListener("click", () =>
+      deleteMember(member)
+    );
+    actionTd.appendChild(deleteBtn);
+
+    tr.appendChild(actionTd);
 
     tbody.appendChild(tr);
   });
 }
 
-/* ===== 점수/방어덱 핸들러 ===== */
+function renderWeekSummary(members) {
+  const tbody = document.getElementById("week-summary-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
 
-function handleScoreChange(event) {
+  const weekId = getSelectedWeekId();
+
+  const activeMembers = members.filter((m) =>
+    isMemberInWeekForScore(m, weekId)
+  );
+
+  DAYS.forEach(({ key, label }) => {
+    let total = 0;
+    let count = 0;
+
+    activeMembers.forEach((member) => {
+      const scores = getScoresForWeek(member, weekId);
+      const v = scores[key];
+      if (typeof v === "number" && !Number.isNaN(v) && v > 0) {
+        total += v;
+        count++;
+      }
+    });
+
+    const tr = document.createElement("tr");
+
+    const dayTd = document.createElement("td");
+    dayTd.textContent = label;
+    tr.appendChild(dayTd);
+
+    const totalTd = document.createElement("td");
+    totalTd.textContent = total > 0 ? formatNumber(total) : "";
+    tr.appendChild(totalTd);
+
+    const avg = count > 0 ? Math.floor(total / count) : 0;
+    const avgTd = document.createElement("td");
+    avgTd.textContent = avg > 0 ? formatNumber(avg) : "";
+    tr.appendChild(avgTd);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderLeftMembers(members) {
+  const tbody = document.getElementById("left-members-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const selectedWeekId = getSelectedWeekId();
+
+  const leftThisWeek = members
+    .map((m) => normalizeMember(m))
+    .filter(
+      (m) => m.status === "left" && m.leaveWeekId === selectedWeekId
+    );
+
+  leftThisWeek.forEach((member) => {
+    const scores = member.scoresByWeek[selectedWeekId] || defaultWeekScores();
+    const defense = getDefenseDeckForWeek(member, selectedWeekId);
+
+    const tr = document.createElement("tr");
+
+    const nameTd = document.createElement("td");
+    nameTd.textContent = member.name;
+    const leaveTypeTd = document.createElement("td");
+    leaveTypeTd.textContent = member.leaveType || "";
+
+    tr.appendChild(nameTd);
+    tr.appendChild(leaveTypeTd);
+
+    DAYS.forEach(({ key }) => {
+      const td = document.createElement("td");
+      const v = scores[key];
+      td.textContent =
+        typeof v === "number" && !Number.isNaN(v) && v > 0
+          ? formatNumber(v)
+          : "";
+      tr.appendChild(td);
+    });
+
+    const leaveWeekTd = document.createElement("td");
+    leaveWeekTd.textContent = member.leaveWeekId || "";
+    tr.appendChild(leaveWeekTd);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderMemberArchive(members) {
+  const tbody = document.getElementById("member-archive-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const sorted = [...members].sort((a, b) =>
+    a.name.localeCompare(b.name, "ko")
+  );
+
+  sorted.forEach((member, idx) => {
+    const tr = document.createElement("tr");
+    tr.dataset.memberId = member.id;
+
+    const idxTd = document.createElement("td");
+    idxTd.textContent = String(idx + 1);
+    tr.appendChild(idxTd);
+
+    const nameTd = document.createElement("td");
+    nameTd.textContent = member.name;
+    tr.appendChild(nameTd);
+
+    const roleTd = document.createElement("td");
+    roleTd.textContent = member.role;
+    tr.appendChild(roleTd);
+
+    const joinTd = document.createElement("td");
+    joinTd.textContent = member.joinDate || "";
+    tr.appendChild(joinTd);
+
+    const leaveTd = document.createElement("td");
+    leaveTd.textContent = member.leaveWeekId || "";
+    tr.appendChild(leaveTd);
+
+    const statusTd = document.createElement("td");
+    statusTd.textContent =
+      member.status === "left" ? "탈퇴" : "활동중";
+    tr.appendChild(statusTd);
+
+    const actionTd = document.createElement("td");
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "정보";
+    editBtn.addEventListener("click", () =>
+      fillMemberFormForEdit(member)
+    );
+    actionTd.appendChild(editBtn);
+
+    const leftBtn = document.createElement("button");
+    leftBtn.textContent = "탈퇴";
+    leftBtn.addEventListener("click", () =>
+      markMemberLeft(member)
+    );
+    actionTd.appendChild(leftBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "삭제";
+    deleteBtn.addEventListener("click", () =>
+      deleteMember(member)
+    );
+    actionTd.appendChild(deleteBtn);
+
+    tr.appendChild(actionTd);
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* ===== 이벤트 핸들러 ===== */
+
+function handleScoreInputChange(event) {
   const mode = getCurrentMode();
-  if (mode === "member") return;
+  if (mode === "member") return; // 길드원 모드에서는 수정 불가
 
   const input = event.currentTarget;
-  const memberId = input.dataset.memberId;
   const dayKey = input.dataset.dayKey;
-  if (!memberId || !dayKey) return;
+  const memberId = input.dataset.memberId;
+  if (!dayKey || !memberId) return;
 
   const members = loadMembers();
   const idx = members.findIndex((m) => String(m.id) === String(memberId));
   if (idx === -1) return;
 
+  const member = members[idx];
   const selectedWeekId = getSelectedWeekId();
-  const member = normalizeMember(members[idx]);
+
   if (!member.scoresByWeek[selectedWeekId]) {
     member.scoresByWeek[selectedWeekId] = defaultWeekScores();
   }
@@ -586,383 +789,254 @@ function handleDefenseToggle(event) {
   if (idx === -1) return;
 
   const selectedWeekId = getSelectedWeekId();
-  const member = normalizeMember(members[idx]);
-  if (!member.defenseDeckByWeek) member.defenseDeckByWeek = {};
-  member.defenseDeckByWeek[selectedWeekId] = checkbox.checked;
-  members[idx] = member;
+  const member = members[idx];
 
-  saveMembers(members);
-  renderAll();
-}
-
-/* ===== 주간 합계표 ===== */
-
-function renderWeekSummary(members) {
-  const tbody = document.getElementById("week-summary-body");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const selectedWeekId = getSelectedWeekId();
-  const active = members
-    .map((m) => normalizeMember(m))
-    .filter((m) => isMemberInWeekForScore(m, selectedWeekId));
-
-  const threshold = getScoreThreshold();
-
-  const daySums = [];
-  const dayParticipants = [];
-  const dayBelowThreshold = [];
-
-  DAYS.forEach(({ key }, idx) => {
-    let sum = 0;
-    let participants = 0;
-    let below = 0;
-
-    active.forEach((member) => {
-      const scores = member.scoresByWeek[selectedWeekId];
-      if (!scores) return;
-      const v = scores[key];
-      if (typeof v === "number" && !Number.isNaN(v) && v > 0) {
-        sum += v;
-        participants += 1;
-        if (v < threshold) below += 1;
-      }
-    });
-
-    daySums[idx] = sum;
-    dayParticipants[idx] = participants;
-    dayBelowThreshold[idx] = below;
-  });
-
-  const totalSum = daySums.reduce((acc, v) => acc + v, 0);
-  const daysWithScore = daySums.filter((v) => v > 0).length;
-  const avgSum = daysWithScore === 0 ? null : totalSum / daysWithScore;
-
-  const totalParticipants = dayParticipants.reduce((acc, v) => acc + v, 0);
-  const daysWithParticipants = dayParticipants.filter((v) => v > 0).length;
-  const avgParticipants =
-    daysWithParticipants === 0 ? null : totalParticipants / daysWithParticipants;
-
-  const totalBelow = dayBelowThreshold.reduce((acc, v) => acc + v, 0);
-  const avgBelow =
-    daysWithParticipants === 0 ? null : totalBelow / daysWithParticipants;
-
-  // 1) 합계 행
-  const sumTr = document.createElement("tr");
-  const sumLabelTd = document.createElement("td");
-  sumLabelTd.textContent = "합계";
-  sumTr.appendChild(sumLabelTd);
-  daySums.forEach((v) => {
-    const td = document.createElement("td");
-    td.textContent = formatNumber(v);
-    sumTr.appendChild(td);
-  });
-  const sumTotalTd = document.createElement("td");
-  sumTotalTd.textContent = formatNumber(totalSum);
-  sumTr.appendChild(sumTotalTd);
-  const sumAvgTd = document.createElement("td");
-  sumAvgTd.textContent =
-    avgSum === null ? "" : formatNumber(Math.round(avgSum));
-  sumTr.appendChild(sumAvgTd);
-  tbody.appendChild(sumTr);
-
-  // 2) 등급 행
-  const gradeTr = document.createElement("tr");
-  const gradeLabelTd = document.createElement("td");
-  gradeLabelTd.textContent = "등급";
-  gradeTr.appendChild(gradeLabelTd);
-  daySums.forEach((v) => {
-    const td = document.createElement("td");
-    td.textContent = gradeForScore(v);
-    gradeTr.appendChild(td);
-  });
-  const gradeTotalTd = document.createElement("td");
-  gradeTotalTd.textContent = gradeForScore(totalSum);
-  gradeTr.appendChild(gradeTotalTd);
-  const gradeAvgTd = document.createElement("td");
-  gradeAvgTd.textContent = gradeForScore(avgSum === null ? 0 : avgSum);
-  gradeTr.appendChild(gradeAvgTd);
-  tbody.appendChild(gradeTr);
-
-  // 3) 참여인원 행
-  const partTr = document.createElement("tr");
-  const partLabelTd = document.createElement("td");
-  partLabelTd.textContent = "참여인원";
-  partTr.appendChild(partLabelTd);
-  dayParticipants.forEach((v) => {
-    const td = document.createElement("td");
-    td.textContent = v > 0 ? formatNumber(v) : "";
-    partTr.appendChild(td);
-  });
-  const partTotalTd = document.createElement("td");
-  partTotalTd.textContent =
-    totalParticipants > 0 ? formatNumber(totalParticipants) : "";
-  partTr.appendChild(partTotalTd);
-  const partAvgTd = document.createElement("td");
-  partAvgTd.textContent =
-    avgParticipants === null ? "" : formatNumber(Math.round(avgParticipants));
-  partTr.appendChild(partAvgTd);
-  tbody.appendChild(partTr);
-
-  // 4) 기준점수미달 행
-  const belowTr = document.createElement("tr");
-  const belowLabelTd = document.createElement("td");
-  belowLabelTd.textContent = "기준점수미달";
-  belowTr.appendChild(belowLabelTd);
-  dayBelowThreshold.forEach((v) => {
-    const td = document.createElement("td");
-    td.textContent = v > 0 ? formatNumber(v) : "";
-    belowTr.appendChild(td);
-  });
-  const belowTotalTd = document.createElement("td");
-  belowTotalTd.textContent =
-    totalBelow > 0 ? formatNumber(totalBelow) : "";
-  belowTr.appendChild(belowTotalTd);
-  const belowAvgTd = document.createElement("td");
-  belowAvgTd.textContent =
-    avgBelow === null ? "" : formatNumber(Math.round(avgBelow));
-  belowTr.appendChild(belowAvgTd);
-  tbody.appendChild(belowTr);
-
-  const thresholdInput = document.getElementById("threshold-input");
-  if (thresholdInput) {
-    thresholdInput.value = formatNumber(threshold);
-    thresholdInput.disabled = getCurrentMode() === "member";
+  if (!member.defenseDeckByWeek) {
+    member.defenseDeckByWeek = {};
   }
+  member.defenseDeckByWeek[selectedWeekId] = checkbox.checked;
+
+  members[idx] = member;
+  saveMembers(members);
+  renderAll();
 }
 
-/* ===== 선택 주 탈퇴자 ===== */
+function fillMemberFormForEdit(member) {
+  const nameInput = document.getElementById("member-name-input");
+  const roleInput = document.getElementById("member-role-input");
+  const joinInput = document.getElementById("member-join-input");
+  const statusInput = document.getElementById("member-status-input");
+  const leaveWeekInput = document.getElementById("member-leave-week-input");
+  const leaveTypeInput = document.getElementById("member-leave-type-input");
 
-function renderLeftMembers(members) {
-  const tbody = document.getElementById("left-combined-body");
-  if (!tbody) return;
-  tbody.innerHTML = "";
+  if (!nameInput) return;
 
-  const selectedWeekId = getSelectedWeekId();
-
-  const leftThisWeek = members
-    .map((m) => normalizeMember(m))
-    .filter((m) => m.status === "left" && m.leaveWeekId === selectedWeekId);
-
-  leftThisWeek.forEach((member) => {
-    const scores = member.scoresByWeek[selectedWeekId] || defaultWeekScores();
-    const defense = getDefenseDeckForWeek(member, selectedWeekId);
-
-    const tr = document.createElement("tr");
-
-    const nameTd = document.createElement("td");
-    nameTd.textContent = member.name;
-    const leaveTypeTd = document.createElement("td");
-    leaveTypeTd.textContent = member.leaveType || "";
-
-    tr.appendChild(nameTd);
-    tr.appendChild(leaveTypeTd);
-
-    DAYS.forEach(({ key }) => {
-      const td = document.createElement("td");
-      const v = scores[key];
-      td.textContent =
-        typeof v === "number" && !Number.isNaN(v) && v > 0
-          ? formatNumber(v)
-          : "";
-      tr.appendChild(td);
-    });
-
-    const leaveWeekTd = document.createElement("td");
-    leaveWeekTd.textContent = member.leaveWeekId || "";
-    tr.appendChild(leaveWeekTd);
-
-    const defenseTd = document.createElement("td");
-    defenseTd.textContent = defense ? "방어" : "";
-    tr.appendChild(defenseTd);
-
-    const actionTd = document.createElement("td");
-    const restoreBtn = document.createElement("button");
-    restoreBtn.textContent = "탈퇴 취소";
-    restoreBtn.dataset.memberId = String(member.id);
-    restoreBtn.classList.add("admin-only");
-    restoreBtn.classList.add("action-btn-small");
-    restoreBtn.addEventListener("click", handleRestoreMember);
-    actionTd.appendChild(restoreBtn);
-    tr.appendChild(actionTd);
-
-    tbody.appendChild(tr);
-  });
+  nameInput.value = member.name || "";
+  if (roleInput) roleInput.value = member.role || "길드원";
+  if (joinInput) joinInput.value = member.joinDate || "";
+  if (statusInput) statusInput.value = member.status || "active";
+  if (leaveWeekInput) leaveWeekInput.value = member.leaveWeekId || "";
+  if (leaveTypeInput) leaveTypeInput.value = member.leaveType || "";
 }
 
-/* ===== 누적 관리 ===== */
+function markMemberLeft(member) {
+  const weekId = getSelectedWeekId();
+  const leaveDate = selectedWeekDate;
 
-function getRolePriority(role) {
-  if (role === "길드장") return 0;
-  if (role === "부길드장") return 1;
-  return 2;
-}
+  const leaveWeekStr = formatDateYYYYMMDD(leaveDate);
 
-function renderMemberArchive(members) {
-  const tbody = document.getElementById("member-archive-body");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const all = members.map((m) => normalizeMember(m));
-
-  all.sort((a, b) => {
-    if (a.status === b.status) {
-      if (a.status === "active") {
-        const ra = getRolePriority(a.role);
-        const rb = getRolePriority(b.role);
-        if (ra !== rb) return ra - rb;
-        if (a.joinDate === b.joinDate) {
-          return a.name.localeCompare(b.name, "ko-KR");
-        }
-        return a.joinDate < b.joinDate ? -1 : 1;
-      } else {
-        const la = a.leaveWeekId;
-        const lb = b.leaveWeekId;
-        if (la === lb) {
-          if (a.joinDate === b.joinDate) {
-            return a.name.localeCompare(b.name, "ko-KR");
-          }
-          return a.joinDate < b.joinDate ? -1 : 1;
-        }
-        if (!la) return 1;
-        if (!lb) return -1;
-        return la > lb ? -1 : 1;
-      }
-    }
-    return a.status === "active" ? -1 : 1;
-  });
-
-  all.forEach((member, index) => {
-    const tr = document.createElement("tr");
-
-    const noTd = document.createElement("td");
-    noTd.textContent = String(index + 1);
-    const nameTd = document.createElement("td");
-    nameTd.textContent = member.name;
-
-    const roleTd = document.createElement("td");
-    if (member.status === "active") {
-      roleTd.textContent = member.role;
-    } else {
-      roleTd.textContent = member.leaveType || "탈퇴";
-    }
-
-    const joinTd = document.createElement("td");
-    joinTd.textContent = member.joinDate || "-";
-
-    const leaveWeekTd = document.createElement("td");
-    leaveWeekTd.textContent = member.leaveWeekId || "";
-
-    const statusTd = document.createElement("td");
-    statusTd.textContent = member.status === "active" ? "현멤버" : "탈퇴";
-
-    const actionTd = document.createElement("td");
-    if (member.status === "left") {
-      const rejoinBtn = document.createElement("button");
-      rejoinBtn.textContent = "재가입";
-      rejoinBtn.dataset.memberId = String(member.id);
-      rejoinBtn.classList.add("admin-only");
-      rejoinBtn.classList.add("action-btn-small");
-      rejoinBtn.addEventListener("click", handleRestoreMember);
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.textContent = "완전 삭제";
-      deleteBtn.dataset.memberId = String(member.id);
-      deleteBtn.classList.add("admin-only");
-      deleteBtn.classList.add("action-btn-small", "delete");
-      deleteBtn.style.marginLeft = "4px";
-      deleteBtn.addEventListener("click", handleDeleteMember);
-
-      actionTd.appendChild(rejoinBtn);
-      actionTd.appendChild(deleteBtn);
-    } else {
-      const leaveBtn = document.createElement("button");
-      leaveBtn.textContent = "탈퇴 처리";
-      leaveBtn.dataset.memberId = String(member.id);
-      leaveBtn.classList.add("admin-only");
-      leaveBtn.classList.add("action-btn-small");
-      leaveBtn.addEventListener("click", handleLeaveMember);
-      actionTd.appendChild(leaveBtn);
-    }
-
-    tr.appendChild(noTd);
-    tr.appendChild(nameTd);
-    tr.appendChild(roleTd);
-    tr.appendChild(joinTd);
-    tr.appendChild(leaveWeekTd);
-    tr.appendChild(statusTd);
-    tr.appendChild(actionTd);
-
-    tbody.appendChild(tr);
-  });
-}
-
-/* ===== 탈퇴/재가입/삭제 ===== */
-
-function chooseLeaveType() {
-  const isKick = window.confirm(
-    "강퇴로 처리하시겠습니까?\n[확인] 강퇴 / [취소] 자진탈퇴",
+  const leaveType = prompt(
+    `탈퇴 유형을 입력하세요. (예: 자진탈퇴, 강퇴)\n(빈칸으로 두면 공란으로 저장됩니다.)`,
+    member.leaveType || ""
   );
-  return isKick ? "강퇴" : "자진탈퇴";
-}
 
-function handleLeaveMember(event) {
-  const mode = getCurrentMode();
-  if (mode === "member") return;
-
-  const button = event.currentTarget;
-  const memberId = button.dataset.memberId;
-  if (!memberId) return;
-
-  const leaveWeekId = getSelectedWeekId();
   const members = loadMembers();
-  const idx = members.findIndex((m) => String(m.id) === String(memberId));
+  const idx = members.findIndex((m) => String(m.id) === String(member.id));
   if (idx === -1) return;
 
-  const leaveType = chooseLeaveType();
-  members[idx].status = "left";
-  members[idx].leaveWeekId = leaveWeekId;
-  members[idx].leaveType = leaveType;
+  const updated = {
+    ...members[idx],
+    status: "left",
+    leaveWeekId: leaveWeekStr,
+    leaveType: leaveType || null,
+  };
 
+  members[idx] = normalizeMember(updated);
   saveMembers(members);
   renderAll();
 }
 
-function handleRestoreMember(event) {
+function deleteMember(member) {
   const mode = getCurrentMode();
   if (mode === "member") return;
 
-  const button = event.currentTarget;
-  const memberId = button.dataset.memberId;
-  if (!memberId) return;
-
-  const members = loadMembers();
-  const idx = members.findIndex((m) => String(m.id) === String(memberId));
-  if (idx === -1) return;
-
-  const today = getTodayStr();
-  members[idx].status = "active";
-  members[idx].leaveWeekId = null;
-  members[idx].leaveType = null;
-  members[idx].joinDate = today;
-
-  saveMembers(members);
-  renderAll();
-}
-
-function handleDeleteMember(event) {
-  const mode = getCurrentMode();
-  if (mode === "member") return;
-
-  const button = event.currentTarget;
-  const memberId = button.dataset.memberId;
-  if (!memberId) return;
   if (!confirm("해당 멤버를 완전히 삭제하시겠습니까? (되돌릴 수 없습니다)")) return;
 
   const members = loadMembers();
-  const filtered = members.filter((m) => String(m.id) !== String(memberId));
+  const filtered = members.filter((m) => String(m.id) !== String(member.id));
   saveMembers(filtered);
   renderAll();
+}
+
+/* ===== 모드/로그인 ===== */
+
+function setupLogin() {
+  const overlay = document.getElementById("login-overlay");
+  const form = document.getElementById("login-form");
+  const input = document.getElementById("login-password");
+  const errorEl = document.getElementById("login-error");
+
+  if (!overlay || !form || !input) return;
+
+  const existingMode = getCurrentMode();
+  if (existingMode) {
+    overlay.style.display = "none";
+    applyMode(existingMode);
+    return;
+  }
+
+  overlay.style.display = "flex";
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const value = input.value.trim();
+
+    let mode = null;
+    if (value === MEMBER_PASSWORD) {
+      mode = "member";
+    } else if (value === ADMIN_PASSWORD) {
+      mode = "admin";
+    } else {
+      errorEl.textContent = "비밀번호가 올바르지 않습니다.";
+      return;
+    }
+
+    sessionStorage.setItem(MODE_KEY, mode);
+    overlay.style.display = "none";
+    errorEl.textContent = "";
+    input.value = "";
+    renderAll(); // 모드 적용까지 다시 렌더링
+  });
+}
+
+/* ===== 주차 컨트롤 ===== */
+
+function setupWeekControls() {
+  const prevBtn = document.getElementById("prev-week-btn");
+  const nextBtn = document.getElementById("next-week-btn");
+  const thisBtn = document.getElementById("this-week-btn");
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      moveWeek(-1);
+      renderAll();
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      moveWeek(1);
+      renderAll();
+    });
+  }
+  if (thisBtn) {
+    thisBtn.addEventListener("click", () => {
+      selectedWeekDate = getThisWeekStartDate();
+      renderAll();
+    });
+  }
+}
+
+/* ===== 컷 기준 컨트롤 ===== */
+
+function setupThresholdControls() {
+  const input = document.getElementById("threshold-input");
+  const applyBtn = document.getElementById("threshold-apply-btn");
+  const label = document.getElementById("threshold-label");
+
+  const threshold = loadThreshold();
+  if (input) input.value = threshold > 0 ? String(threshold) : "";
+  if (label) {
+    label.textContent =
+      threshold > 0 ? `현재 컷: ${formatNumber(threshold)}` : "컷 기준 없음";
+  }
+
+  if (applyBtn && input && label) {
+    applyBtn.addEventListener("click", () => {
+      const raw = input.value.replace(/,/g, "").trim();
+      const n = raw === "" ? 0 : Number(raw);
+      if (Number.isNaN(n) || n < 0) {
+        alert("0 이상 숫자를 입력하세요.");
+        return;
+      }
+      saveThreshold(n);
+      label.textContent =
+        n > 0 ? `현재 컷: ${formatNumber(n)}` : "컷 기준 없음";
+      renderAll();
+    });
+  }
+}
+
+/* ===== 정렬 컨트롤 ===== */
+
+function setupSortControls() {
+  const buttons = document.querySelectorAll(".sort-btn");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.sortKey;
+      if (!key) return;
+      setSort(key);
+      renderAll();
+    });
+  });
+  updateSortIndicators();
+}
+
+/* ===== 멤버 추가/수정 폼 ===== */
+
+function setupMemberForm() {
+  const addBtn = document.getElementById("member-add-btn");
+  if (!addBtn) return;
+
+  addBtn.addEventListener("click", () => {
+    const nameInput = document.getElementById("member-name-input");
+    const roleInput = document.getElementById("member-role-input");
+    const joinInput = document.getElementById("member-join-input");
+    const statusInput = document.getElementById("member-status-input");
+    const leaveWeekInput = document.getElementById("member-leave-week-input");
+    const leaveTypeInput = document.getElementById("member-leave-type-input");
+
+    if (!nameInput || !roleInput || !joinInput || !statusInput) return;
+
+    const name = nameInput.value.trim();
+    if (!name) {
+      alert("닉네임을 입력해주세요.");
+      return;
+    }
+
+    const role = roleInput.value || "길드원";
+    const joinDate = joinInput.value || getTodayStr();
+    const status = statusInput.value || "active";
+    const leaveWeekId = leaveWeekInput.value || null;
+    const leaveType = leaveTypeInput.value || null;
+
+    const members = loadMembers();
+    const existingIdx = members.findIndex((m) => m.name === name);
+
+    if (existingIdx >= 0) {
+      const prev = members[existingIdx];
+      members[existingIdx] = normalizeMember({
+        ...prev,
+        role,
+        joinDate,
+        status,
+        leaveWeekId,
+        leaveType,
+      });
+    } else {
+      members.push(
+        normalizeMember({
+          id: Date.now(),
+          name,
+          role,
+          joinDate,
+          status,
+          leaveWeekId,
+          leaveType,
+          scoresByWeek: {},
+          defenseDeckByWeek: {},
+        })
+      );
+    }
+
+    saveMembers(members);
+    renderAll();
+
+    nameInput.value = "";
+    joinInput.value = "";
+    statusInput.value = "active";
+    if (leaveWeekInput) leaveWeekInput.value = "";
+    if (leaveTypeInput) leaveTypeInput.value = "";
+  });
 }
 
 /* ===== 공통 렌더링 & 셋업 ===== */
@@ -981,197 +1055,17 @@ function renderAll() {
   if (mode) applyMode(mode);
 }
 
-function setupMemberForm() {
-  const form = document.getElementById("member-form");
-  if (!form) return;
-
-  const joinDateInput = document.getElementById("member-join-date");
-  if (joinDateInput) joinDateInput.value = getTodayStr();
-
-  form.addEventListener("submit", (event) => {
-    const mode = getCurrentMode();
-    if (mode === "member") {
-      event.preventDefault();
-      return;
-    }
-
-    event.preventDefault();
-    const nameInput = document.getElementById("member-name");
-    const roleSelect = document.getElementById("member-role");
-    if (!nameInput || !roleSelect) return;
-
-    const name = nameInput.value.trim();
-    const role = roleSelect.value;
-    const joinDateInputNow = document.getElementById("member-join-date");
-    const joinDateValue =
-      joinDateInputNow && joinDateInputNow.value
-        ? joinDateInputNow.value
-        : getTodayStr();
-
-    if (!name) {
-      alert("닉네임을 입력해주세요.");
-      return;
-    }
-
-    const members = loadMembers();
-    const activeCount = members.filter((m) => m.status === "active").length;
-    if (activeCount >= MAX_ACTIVE) {
-      alert("활동 인원이 30명을 초과하여 더 이상 추가할 수 없습니다.");
-      return;
-    }
-
-    const selectedWeekId = getSelectedWeekId();
-    const newMember = normalizeMember({
-      id: Date.now(),
-      name,
-      role,
-      joinDate: joinDateValue,
-      status: "active",
-      leaveWeekId: null,
-      leaveType: null,
-      scoresByWeek: { [selectedWeekId]: defaultWeekScores() },
-      defenseDeckByWeek: {},
-    });
-
-    members.push(newMember);
-    saveMembers(members);
-
-    nameInput.value = "";
-    roleSelect.value = "길드원";
-    if (joinDateInputNow) joinDateInputNow.value = getTodayStr();
-
-    renderAll();
-  });
-}
-
-function setupWeekControls() {
-  const prevBtn = document.getElementById("prev-week-btn");
-  const nextBtn = document.getElementById("next-week-btn");
-  if (prevBtn) {
-    prevBtn.addEventListener("click", () => {
-      selectedWeekDate = addDays(selectedWeekDate, -7);
-      renderAll();
-    });
-  }
-  if (nextBtn) {
-    nextBtn.addEventListener("click", () => {
-      selectedWeekDate = addDays(selectedWeekDate, 7);
-      renderAll();
-    });
-  }
-}
-
-function setupThresholdControls() {
-  const input = document.getElementById("threshold-input");
-  if (!input) return;
-  const current = getScoreThreshold();
-  input.value = formatNumber(current);
-  input.addEventListener("change", () => {
-    const mode = getCurrentMode();
-    if (mode === "member") {
-      const cur = getScoreThreshold();
-      input.value = formatNumber(cur);
-      return;
-    }
-    const raw = input.value.replace(/,/g, "").trim();
-    const safe = setScoreThreshold(raw === "" ? 300000 : raw);
-    input.value = formatNumber(safe);
-    renderAll();
-  });
-}
-
-function setupSortControls() {
-  const headerRow = document.querySelector("#active-members thead tr");
-  if (!headerRow) return;
-  headerRow.querySelectorAll("th.sortable").forEach((th) => {
-    const key = th.dataset.sortKey;
-    if (!key) return;
-    th.addEventListener("click", () => {
-      if (sortState.key === key) {
-        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-      } else {
-        sortState.key = key;
-        sortState.dir = ["name", "role"].includes(key) ? "asc" : "desc";
-      }
-      renderAll();
-    });
-  });
-}
-
-function updateSortIndicators() {
-  const headerRow = document.querySelector("#active-members thead tr");
-  if (!headerRow) return;
-  headerRow.querySelectorAll("th.sortable").forEach((th) => {
-    th.classList.remove("sort-asc", "sort-desc");
-    const key = th.dataset.sortKey;
-    if (!key) return;
-    if (key === sortState.key) {
-      th.classList.add(sortState.dir === "asc" ? "sort-asc" : "sort-desc");
-    }
-  });
-}
-
-/* ===== 로그인 ===== */
-
-function setupLogin() {
-  const overlay = document.getElementById("login-overlay");
-  const form = document.getElementById("login-form");
-  const input = document.getElementById("login-password");
-  const errorEl = document.getElementById("login-error");
-
-  if (!overlay || !form || !input || !errorEl) return;
-
-  const savedMode = getCurrentMode();
-  if (savedMode) {
-    overlay.style.display = "none";
-    return;
-  }
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const value = input.value.trim();
-    let mode = null;
-
-    if (value === MEMBER_PASSWORD) mode = "member";
-    if (value === ADMIN_PASSWORD) mode = "admin";
-
-    if (!mode) {
-      errorEl.textContent = "비밀번호가 올바르지 않습니다.";
-      return;
-    }
-
-    sessionStorage.setItem(MODE_KEY, mode);
-    overlay.style.display = "none";
-    errorEl.textContent = "";
-    input.value = "";
-    renderAll();
-  });
-}
-
-/* ===== 로그아웃 버튼 ===== */
-
-function setupLogout() {
-  const logoutBtn = document.getElementById("logout-btn");
-  if (!logoutBtn) return;
-  logoutBtn.addEventListener("click", () => {
-    sessionStorage.removeItem(MODE_KEY);
-    location.reload();
-  });
-}
-
 /* ===== 초기화 ===== */
 
-document.addEventListener("DOMContentLoaded", async () => {
-  setupLogin();
-  setupLogout();
-  setupMemberForm();
-  setupWeekControls();
-  setupThresholdControls();
-  setupSortControls();
-
-  // 1) Firestore → localStorage 로 덮어쓰기
-  await loadRemoteState();
-
-  // 2) UI 렌더링
-  renderAll();
+document.addEventListener("DOMContentLoaded", () => {
+  (async () => {
+    await initFirebase();
+    await syncMembersFromRemote();
+    setupLogin();
+    setupMemberForm();
+    setupWeekControls();
+    setupThresholdControls();
+    setupSortControls();
+    renderAll();
+  })();
 });
