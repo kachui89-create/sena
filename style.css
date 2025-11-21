@@ -272,13 +272,16 @@ th.sortable.sort-desc::after {
 /* ===== 점수 입력 ===== */
 
 .score-input {
-  width: 72px;
-  text-align: right;
-  background-color: #020617;
-  border-radius: 6px;
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  padding: 3px 5px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 2px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: #e5e7eb;
   font-size: 12px;
+  text-align: right;   /* 숫자 오른쪽 정렬 */
 }
 
 .score-input.readonly {
@@ -365,4 +368,20 @@ button.action-btn-small.delete {
   .score-input { width: 48px; font-size: 9px; }
   .summary-input { width: 70px; }
   button { padding: 4px 6px; font-size: 10px; }
+}
+
+#left-combined-table th,
+#left-combined-table td {
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.action-btn-small {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.action-btn-small.delete {
+  /* 기존 버튼 색을 쓰고 있다면 색은 건들지 않아도 됨.
+     혹시 너무 튀면 opacity만 살짝 줄여도 됨 */
 }
