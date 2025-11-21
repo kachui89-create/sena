@@ -668,8 +668,15 @@ function renderWeekSummary(members) {
   sumTr.appendChild(sumTotalTd);
   const sumAvgTd = document.createElement("td");
   sumAvgTd.textContent =
-    avgSum === null ? "" : formatNumber(Math.round(avgSum));
+  const sumTotalTd = document.createElement("td");
+  sumTotalTd.textContent = formatNumber(totalSum);
+  sumTr.appendChild(sumTotalTd);
+
+  // ✅ 합계 행의 '평균' 칸은 비워두기
+  const sumAvgTd = document.createElement("td");
+  sumAvgTd.textContent = "";  // <- 여기만 변경
   sumTr.appendChild(sumAvgTd);
+
   tbody.appendChild(sumTr);
 
   // 2) 등급 행
@@ -1181,3 +1188,4 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2) UI 렌더링
   renderAll();
 });
+
