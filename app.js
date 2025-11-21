@@ -1,8 +1,8 @@
-// app.js (모듈 버전)
+// app.js (Firestore 전용 버전)
 // -------------------------------------------------------
-// - Firebase 모듈 CDN을 직접 import
-// - Firestore에 guildConfigs/default 문서로 통째 저장
-// - localStorage + Firestore 동기화 구조
+// - localStorage 완전 제거
+// - Firestore(guildConfigs/default)만 진짜 데이터 소스로 사용
+// - CSV 업로더(import.html)가 저장한 구조를 그대로 사용
 
 // ===== Firebase import & 초기화 =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
@@ -32,8 +32,7 @@ const remoteDocRef = doc(db, "guildConfigs", "default");
 console.log("✅ Firebase 초기화 완료(모듈+app.js)", fbApp);
 
 // ===== 로그인/권한 관련 상수 =====
-const STORAGE_KEY = "guildMembers";
-const THRESHOLD_KEY = "guildScoreThreshold";
+// (이제 localStorage 대신 Firestore만 사용, 로그인은 그대로 sessionStorage 사용)
 const MODE_KEY = "guildViewMode"; // 'admin' | 'member'
 
 // 비밀번호 (영문자)
@@ -65,45 +64,67 @@ let sortState = {
 // Firestore 저장 디바운스용 타이머
 let remoteSaveTimer = null;
 
-/* ===== Firestore → localStorage 로드 ===== */
+// 🔥 앱 상태 (Firestore만 사용)
+let appState = {
+  members: [],      // Firestore에서 불러온 멤버 배열
+  threshold: 300000, // 기준 점수
+  loaded: false,    // Firestore 로딩 완료 여부
+};
+
+/* ===== Firestore ←→ 앱 상태 ===== */
+
 async function loadRemoteState() {
   try {
     const snap = await getDoc(remoteDocRef);
     if (!snap.exists()) {
-      console.log("원격 문서 없음(최초 실행일 수 있음) - 로컬 데이터로 시작합니다.");
+      console.log("원격 문서 없음(최초 실행일 수 있음) - 빈 상태로 시작합니다.");
+      appState.members = [];
+      appState.threshold = 300000;
+      appState.loaded = true;
       return;
     }
+
     const data = snap.data() || {};
-    if (Array.isArray(data.members)) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.members));
+    const rawMembers = Array.isArray(data.members) ? data.members : [];
+    const normalized = rawMembers.map((m) => normalizeMember(m));
+
+    let threshold = 300000;
+    if (typeof data.threshold === "number" && !Number.isNaN(data.threshold)) {
+      threshold = data.threshold;
     }
-    if (typeof data.threshold === "number") {
-      localStorage.setItem(THRESHOLD_KEY, String(data.threshold));
-    }
-    console.log("원격 데이터 로드 완료");
+
+    appState.members = normalized;
+    appState.threshold = threshold;
+    appState.loaded = true;
+
+    console.log(
+      `원격 데이터 로드 완료: 멤버 ${normalized.length}명, 기준점수 ${threshold.toLocaleString("ko-KR")}`,
+    );
   } catch (e) {
     console.error("원격 데이터 로드 실패:", e);
+    appState.members = [];
+    appState.threshold = 300000;
+    appState.loaded = true;
   }
 }
 
-/* ===== localStorage → Firestore 저장(디바운스) ===== */
-function scheduleRemoteSave(normalizedMembers) {
+function scheduleRemoteSave() {
   if (!remoteDocRef) return;
 
   if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
   remoteSaveTimer = setTimeout(async () => {
     try {
-      const threshold = getScoreThreshold();
-      await setDoc(remoteDocRef, {
-        members: normalizedMembers,
-        threshold,
+      const payload = {
+        members: appState.members.map((m) => normalizeMember(m)),
+        threshold: appState.threshold,
         updatedAt: serverTimestamp(),
-      });
-      console.log("원격 데이터 저장 완료");
+      };
+      await setDoc(remoteDocRef, payload);
+      console.log("원격 데이터 저장 완료 (members/threshold)");
     } catch (e) {
       console.error("원격 데이터 저장 실패:", e);
     }
-  }, 1000);
+  }, 800);
 }
 
 /* ===== 날짜 / 주차 관련 유틸 ===== */
@@ -236,20 +257,19 @@ function gradeForScore(score) {
   return "F";
 }
 
-/* ===== 기준점수 (로컬 저장) ===== */
+/* ===== 기준점수 (Firestore 기반) ===== */
 
 function getScoreThreshold() {
-  const raw = localStorage.getItem(THRESHOLD_KEY);
-  if (!raw) return 300000;
-  const n = Number(raw);
-  if (Number.isNaN(n) || n < 0) return 300000;
-  return n;
+  const raw = appState.threshold;
+  if (typeof raw !== "number" || Number.isNaN(raw) || raw < 0) return 300000;
+  return raw;
 }
 
 function setScoreThreshold(value) {
   const n = Number(value);
   const safe = Number.isNaN(n) || n < 0 ? 300000 : Math.round(n);
-  localStorage.setItem(THRESHOLD_KEY, String(safe));
+  appState.threshold = safe;
+  scheduleRemoteSave();
   return safe;
 }
 
@@ -273,7 +293,11 @@ function normalizeMember(member) {
   if (!scoresByWeek || typeof scoresByWeek !== "object") scoresByWeek = {};
 
   // 구버전 데이터(scores) → thisWeek로 마이그레이션
-  if (Object.keys(scoresByWeek).length === 0 && member.scores && typeof member.scores === "object") {
+  if (
+    Object.keys(scoresByWeek).length === 0 &&
+    member.scores &&
+    typeof member.scores === "object"
+  ) {
     const migrated = {};
     DAYS.forEach(({ key }) => {
       const v = member.scores[key];
@@ -307,25 +331,17 @@ function getDefenseDeckForWeek(member, weekId) {
   return !!map[lastKey];
 }
 
-/* ===== LocalStorage + Firestore 동기화 ===== */
+/* ===== Firestore 기반 멤버 로드/저장 ===== */
 
 function loadMembers() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((m) => normalizeMember(m));
-  } catch (e) {
-    console.error("멤버 데이터 로드 오류:", e);
-    return [];
-  }
+  if (!appState.loaded) return [];
+  return appState.members.map((m) => normalizeMember(m));
 }
 
 function saveMembers(members) {
   const normalized = members.map((m) => normalizeMember(m));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  scheduleRemoteSave(normalized);
+  appState.members = normalized;
+  scheduleRemoteSave();
 }
 
 /* ===== 주차 포함 여부 ===== */
@@ -968,6 +984,10 @@ function handleDeleteMember(event) {
 /* ===== 공통 렌더링 & 셋업 ===== */
 
 function renderAll() {
+  if (!appState.loaded) {
+    console.log("아직 Firestore 로딩 전, 렌더링 건너뜀");
+    return;
+  }
   const members = loadMembers();
   renderWeekLabel();
   renderSummary(members);
@@ -1169,7 +1189,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupThresholdControls();
   setupSortControls();
 
-  // 1) Firestore → localStorage 로 덮어쓰기
+  // 1) Firestore → appState 로 로드
   await loadRemoteState();
 
   // 2) UI 렌더링
