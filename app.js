@@ -425,12 +425,14 @@ function applyMode(mode) {
     el.style.display = isAdmin ? "" : "none";
   });
 
-  document.querySelectorAll(".score-input").forEach((input) => {
-    input.disabled = !isAdmin;
-    if (!isAdmin) {
-      input.classList.add("readonly");
+  // ✅ score-input은 이제 contentEditable 요소
+  document.querySelectorAll(".score-input").forEach((el) => {
+    if (isAdmin) {
+      el.contentEditable = "true";
+      el.classList.remove("readonly");
     } else {
-      input.classList.remove("readonly");
+      el.contentEditable = "false";
+      el.classList.add("readonly");
     }
   });
 
@@ -500,23 +502,23 @@ function renderActiveMembers(members) {
     tr.appendChild(nameTd);
     tr.appendChild(roleTd);
 
+    // ✅ input 대신 셀 직접 입력(contenteditable span)
     DAYS.forEach(({ key }) => {
       const td = document.createElement("td");
-      const input = document.createElement("input");
-      input.type = "text";
-      input.inputMode = "numeric";
-      input.className = "score-input";
-      input.dataset.memberId = String(member.id);
-      input.dataset.dayKey = key;
+      const span = document.createElement("span");
+      span.className = "score-input";
+      span.dataset.memberId = String(member.id);
+      span.dataset.dayKey = key;
 
       const v = scores[key];
-      input.value =
+      span.textContent =
         typeof v === "number" && !Number.isNaN(v) && v > 0
           ? formatNumber(v)
           : "";
 
-      input.addEventListener("change", handleScoreChange);
-      td.appendChild(input);
+      // 값 변경은 blur 시점에 저장
+      span.addEventListener("blur", handleScoreChange);
+      td.appendChild(span);
       tr.appendChild(td);
     });
 
@@ -551,9 +553,9 @@ function handleScoreChange(event) {
   const mode = getCurrentMode();
   if (mode === "member") return;
 
-  const input = event.currentTarget;
-  const memberId = input.dataset.memberId;
-  const dayKey = input.dataset.dayKey;
+  const el = event.currentTarget;
+  const memberId = el.dataset.memberId;
+  const dayKey = el.dataset.dayKey;
   if (!memberId || !dayKey) return;
 
   const members = loadMembers();
@@ -566,7 +568,7 @@ function handleScoreChange(event) {
     member.scoresByWeek[selectedWeekId] = defaultWeekScores();
   }
 
-  const raw = input.value.replace(/,/g, "").trim();
+  const raw = (el.textContent || "").replace(/,/g, "").trim();
   let newVal = null;
   if (raw !== "") {
     const n = Number(raw);
@@ -666,15 +668,10 @@ function renderWeekSummary(members) {
   const sumTotalTd = document.createElement("td");
   sumTotalTd.textContent = formatNumber(totalSum);
   sumTr.appendChild(sumTotalTd);
-  const sumAvgTd = document.createElement("td");
-  sumAvgTd.textContent =
-  const sumTotalTd = document.createElement("td");
-  sumTotalTd.textContent = formatNumber(totalSum);
-  sumTr.appendChild(sumTotalTd);
 
   // ✅ 합계 행의 '평균' 칸은 비워두기
   const sumAvgTd = document.createElement("td");
-  sumAvgTd.textContent = "";  // <- 여기만 변경
+  sumAvgTd.textContent = "";
   sumTr.appendChild(sumAvgTd);
 
   tbody.appendChild(sumTr);
@@ -1188,4 +1185,3 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2) UI 렌더링
   renderAll();
 });
-
