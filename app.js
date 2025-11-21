@@ -272,7 +272,7 @@ function normalizeMember(member) {
   let scoresByWeek = base.scoresByWeek;
   if (!scoresByWeek || typeof scoresByWeek !== "object") scoresByWeek = {};
 
-  // 구버전 데이터(scoress) → thisWeek로 마이그레이션
+  // 구버전 데이터(scores) → thisWeek로 마이그레이션
   if (Object.keys(scoresByWeek).length === 0 && member.scores && typeof member.scores === "object") {
     const migrated = {};
     DAYS.forEach(({ key }) => {
