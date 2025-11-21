@@ -1,121 +1,373 @@
 <!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <title>길드 데이터 일괄 업로드</title>
-  <link rel="stylesheet" href="style.css" />
-  <style>
-    .import-container {
-      max-width: 720px;
-      margin: 40px auto;
-      padding: 20px;
-      background: rgba(15, 23, 42, 0.95);
-      border-radius: 16px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-      border: 1px solid rgba(148,163,184,0.4);
-    }
-    .import-container h1 {
-      text-align: center;
-      margin-bottom: 16px;
-      font-size: 22px;
-      color: #f9fafb;
-    }
-    .import-container h2 {
-      margin-top: 20px;
-      margin-bottom: 8px;
-      font-size: 16px;
-      color: #e5e7eb;
-    }
-    .import-container p {
-      font-size: 13px;
-      color: #d1d5db;
-      line-height: 1.5;
-    }
-    .import-form {
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .import-form label {
-      font-size: 13px;
-      color: #e5e7eb;
-    }
-    #log {
-      margin-top: 16px;
-      padding: 10px;
-      background: #020617;
-      border-radius: 8px;
-      font-size: 12px;
-      max-height: 320px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      color: #e5e7eb;
-      border: 1px solid rgba(55,65,81,0.9);
-    }
-    .back-link {
-      display: inline-block;
-      margin-top: 10px;
-      font-size: 12px;
-      color: #93c5fd;
-      text-decoration: none;
-    }
-    .back-link:hover {
-      text-decoration: underline;
-    }
-    code {
-      font-size: 12px;
-      background: rgba(15, 23, 42, 0.9);
-      padding: 2px 4px;
-      border-radius: 4px;
-    }
-  </style>
-</head>
-<body>
-  <div class="import-container">
-    <h1>길드 데이터 일괄 업로드</h1>
-
+  <head>
+    <meta charset="UTF-8" />
+    <title>길드 데이터 일괄 업로드 (guildConfigs/default)</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #111827;
+        color: #e5e7eb;
+        padding: 24px;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      .card {
+        background: #1f2937;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+      }
+      input[type="file"] {
+        display: block;
+        margin-top: 4px;
+      }
+      button {
+        margin-top: 12px;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button#upload-btn {
+        background: #2563eb;
+        color: white;
+      }
+      button#upload-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      pre {
+        background: #000000;
+        padding: 12px;
+        border-radius: 6px;
+        max-height: 400px;
+        overflow: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      a {
+        color: #93c5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>길드 데이터 CSV 업로드</h1>
     <p>
-      기존 엑셀 데이터를 <strong>CSV 두 개</strong>로 나눈 뒤 업로드합니다.<br />
-      1) <code>members.csv</code> : 멤버 기본 정보 (닉네임, 직책, 가입일 등)<br />
-      2) <code>scores.csv</code> : 주차별 점수 + 방어덱 정보
+      이 페이지는 <code>guildConfigs/default</code> 문서를
+      <strong>통째로 덮어쓰기</strong> 합니다. (로컬스토리지 사용 안 함)
     </p>
 
-    <h2>1. members.csv (멤버 기본 정보)</h2>
-    <p>
-      헤더 예시:<br />
-      <code>name,role,joinDate,status,leaveWeekId,leaveType</code><br />
-      데이터 예시:<br />
-      <code>박대리,길드원,2024-10-01,active,,</code><br />
-      <code>Yujiru,길드원,2024-09-01,left,2024-11-04,강퇴</code>
-    </p>
-
-    <h2>2. scores.csv (주차별 점수)</h2>
-    <p>
-      헤더 예시:<br />
-      <code>name,weekId,mon,tue,wed,thu,fri,sat,sun,defense</code><br />
-      데이터 예시:<br />
-      <code>박대리,2024-11-04,2341943,1587835,1015346,2665014,2795452,2245482,2598493,Y</code>
-    </p>
-
-    <form class="import-form" onsubmit="return false;">
+    <div class="card">
+      <h2>1. CSV 선택</h2>
       <label>
-        members.csv 선택:
+        members.csv (UTF-8):
         <input type="file" id="members-file" accept=".csv" />
       </label>
       <label>
-        scores.csv 선택:
+        scores.csv (UTF-8):
         <input type="file" id="scores-file" accept=".csv" />
       </label>
-      <button type="button" id="upload-btn">업로드 시작</button>
-    </form>
+      <button id="upload-btn">업로드 시작</button>
+      <p style="font-size: 12px; color: #9ca3af; margin-top: 8px">
+        * 엑셀에서 저장 시 형식:
+        <strong>“CSV UTF-8(쉼표로 분리)(*.csv)”</strong> 를 선택해주세요. (한글
+        깨짐 방지)
+      </p>
+      <p style="font-size: 12px; color: #f97373">
+        * 업로드하면 기존 <code>guildConfigs/default</code> 의 members/threshold가
+        모두 덮어써집니다.
+      </p>
+    </div>
 
-    <a href="index.html" class="back-link">&larr; 메인 공성 관리 도구로 돌아가기</a>
+    <div class="card">
+      <h2>로그</h2>
+      <pre id="log"></pre>
+    </div>
 
-    <pre id="log"></pre>
-  </div>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+      import {
+        getFirestore,
+        doc,
+        getDoc,
+        setDoc,
+        serverTimestamp,
+      } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-  <!-- Firebase + 업로드 로직 -->
-  <script type="module" src="import.js"></script>
-</body>
+      const firebaseConfig = {
+        apiKey: "AIzaSyBKvKAPMwG0FJQj7n3OmX7Ld3sUrPpqtQA",
+        authDomain: "sena-guild-tool.firebaseapp.com",
+        projectId: "sena-guild-tool",
+        storageBucket: "sena-guild-tool.firebasestorage.app",
+        messagingSenderId: "93989921944",
+        appId: "1:93989921944:web:2b3aa298d6f97481411ced",
+        measurementId: "G-5YSK93P66B",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const remoteDocRef = doc(db, "guildConfigs", "default");
+
+      const logEl = document.getElementById("log");
+      const uploadBtn = document.getElementById("upload-btn");
+
+      function log(msg) {
+        const time = new Date().toLocaleTimeString("ko-KR", {
+          hour12: false,
+        });
+        logEl.textContent += `[${time}] ${msg}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+        console.log(msg);
+      }
+
+      function parseCSV(text) {
+        return text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .map((line) => line.split(",").map((s) => s.trim()));
+      }
+
+      function parseNumberOrNull(v) {
+        if (v == null || v === "") return null;
+        const n = Number(String(v).replace(/,/g, ""));
+        if (!Number.isFinite(n) || n <= 0) return null;
+        return n;
+      }
+
+      function defaultWeekScores() {
+        return {
+          mon: null,
+          tue: null,
+          wed: null,
+          thu: null,
+          fri: null,
+          sat: null,
+          sun: null,
+        };
+      }
+
+      async function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(file, "utf-8"); // 한글 깨짐 방지
+        });
+      }
+
+      async function handleUpload() {
+        const membersFile = document.getElementById("members-file").files[0];
+        const scoresFile = document.getElementById("scores-file").files[0];
+
+        if (!membersFile || !scoresFile) {
+          alert("members.csv 와 scores.csv 를 모두 선택해주세요.");
+          return;
+        }
+
+        uploadBtn.disabled = true;
+        log("=== 업로드 시작 ===");
+
+        try {
+          // 기존 threshold 가져오기 (있으면 유지)
+          let threshold = 300000;
+          try {
+            const snap = await getDoc(remoteDocRef);
+            if (snap.exists()) {
+              const data = snap.data() || {};
+              if (
+                typeof data.threshold === "number" &&
+                data.threshold >= 0
+              ) {
+                threshold = data.threshold;
+              }
+            }
+          } catch (e) {
+            log("기존 threshold 조회 실패 (무시 가능): " + e.message);
+          }
+
+          // 1) members.csv 파싱
+          log(`members.csv 읽는 중: ${membersFile.name}`);
+          const membersText = await readFileAsText(membersFile);
+          const membersRows = parseCSV(membersText);
+          if (membersRows.length < 2) {
+            throw new Error("members.csv 에 데이터가 없습니다.");
+          }
+          const mHeader = membersRows[0];
+          const mData = membersRows.slice(1);
+
+          const colIndex = {
+            name: mHeader.indexOf("name"),
+            role: mHeader.indexOf("role"),
+            joinDate: mHeader.indexOf("joinDate"),
+            status: mHeader.indexOf("status"),
+            leaveType: mHeader.indexOf("leaveType"),
+            leaveWeekId: mHeader.indexOf("leaveWeekId"),
+          };
+
+          if (colIndex.name === -1) {
+            throw new Error(
+              "members.csv 헤더에 name 컬럼이 필요합니다. (예: name,role,joinDate,...)",
+            );
+          }
+
+          const memberMap = new Map(); // key: name
+
+          mData.forEach((row, i) => {
+            const rowNo = i + 2; // 1행 헤더라서
+            const name = row[colIndex.name]?.trim();
+            if (!name) {
+              log(`⚠ [행 ${rowNo}] name 이 비어 있어 건너뜀`);
+              return;
+            }
+
+            const role =
+              colIndex.role === -1 ? "길드원" : row[colIndex.role]?.trim() || "길드원";
+            const joinDate =
+              colIndex.joinDate === -1
+                ? null
+                : row[colIndex.joinDate]?.trim() || null;
+            const statusRaw =
+              colIndex.status === -1 ? "" : row[colIndex.status]?.trim() || "";
+            const status =
+              statusRaw === "left" || statusRaw === "탈퇴" ? "left" : "active";
+            const leaveType =
+              colIndex.leaveType === -1
+                ? null
+                : row[colIndex.leaveType]?.trim() || null;
+            const leaveWeekId =
+              colIndex.leaveWeekId === -1
+                ? null
+                : row[colIndex.leaveWeekId]?.trim() || null;
+
+            const base = {
+              id: Date.now() + rowNo,
+              name,
+              role,
+              joinDate: joinDate || "2025-01-01",
+              status,
+              leaveType: leaveType || null,
+              leaveWeekId: leaveWeekId || null,
+              scoresByWeek: {},
+              defenseDeckByWeek: {},
+            };
+
+            memberMap.set(name, base);
+            log(`✅ [행 ${rowNo}] 멤버 기본정보 로드: ${name}`);
+          });
+
+          // 2) scores.csv 파싱
+          log(`scores.csv 읽는 중: ${scoresFile.name}`);
+          const scoresText = await readFileAsText(scoresFile);
+          const scoresRows = parseCSV(scoresText);
+          if (scoresRows.length < 2) {
+            throw new Error("scores.csv 에 데이터가 없습니다.");
+          }
+
+          const sHeader = scoresRows[0];
+          const sData = scoresRows.slice(1);
+
+          const sIndex = {
+            name: sHeader.indexOf("name"),
+            weekId: sHeader.indexOf("weekId"),
+            mon: sHeader.indexOf("mon"),
+            tue: sHeader.indexOf("tue"),
+            wed: sHeader.indexOf("wed"),
+            thu: sHeader.indexOf("thu"),
+            fri: sHeader.indexOf("fri"),
+            sat: sHeader.indexOf("sat"),
+            sun: sHeader.indexOf("sun"),
+          };
+
+          if (sIndex.name === -1 || sIndex.weekId === -1) {
+            throw new Error(
+              "scores.csv 헤더에 name, weekId 컬럼이 필요합니다. (예: name,weekId,mon,tue,...)",
+            );
+          }
+
+          sData.forEach((row, i) => {
+            const rowNo = i + 2;
+            const name = row[sIndex.name]?.trim();
+            const weekId = row[sIndex.weekId]?.trim();
+            if (!name || !weekId) {
+              log(
+                `⚠ [행 ${rowNo}] name 또는 weekId 가 비어 있어 건너뜀 (name=${name}, weekId=${weekId})`,
+              );
+              return;
+            }
+
+            if (!memberMap.has(name)) {
+              // members.csv 에 없는 이름이면 기본값으로 생성
+              log(
+                `⚠ [행 ${rowNo}] members.csv 에 없는 이름이라 새 멤버 생성: ${name}`,
+              );
+              memberMap.set(name, {
+                id: Date.now() + 100000 + rowNo,
+                name,
+                role: "길드원",
+                joinDate: weekId,
+                status: "active",
+                leaveType: null,
+                leaveWeekId: null,
+                scoresByWeek: {},
+                defenseDeckByWeek: {},
+              });
+            }
+
+            const member = memberMap.get(name);
+            if (!member.scoresByWeek) member.scoresByWeek = {};
+            if (!member.scoresByWeek[weekId]) {
+              member.scoresByWeek[weekId] = defaultWeekScores();
+            }
+
+            const target = member.scoresByWeek[weekId];
+
+            ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].forEach((day) => {
+              const idx = sIndex[day];
+              if (idx === -1) return;
+              const val = parseNumberOrNull(row[idx]);
+              if (val != null) {
+                target[day] = val;
+              }
+            });
+
+            log(`✅ [행 ${rowNo}] 점수 반영: ${name} / ${weekId}`);
+          });
+
+          const finalMembers = Array.from(memberMap.values());
+          log(
+            `=== Firestore 저장 준비: 멤버 ${finalMembers.length}명, threshold=${threshold} ===`,
+          );
+
+          await setDoc(remoteDocRef, {
+            members: finalMembers,
+            threshold,
+            updatedAt: serverTimestamp(),
+          });
+
+          log("🎉 Firestore guildConfigs/default 문서 저장 완료!");
+          log("index.html 을 새로고침하면 업로드한 데이터가 바로 보입니다.");
+        } catch (e) {
+          console.error(e);
+          log("❌ 업로드 중 오류: " + e.message);
+          alert("업로드 중 오류가 발생했습니다. 로그를 확인해주세요.");
+        } finally {
+          uploadBtn.disabled = false;
+          log("=== 업로드 작업 종료 ===");
+        }
+      }
+
+      uploadBtn.addEventListener("click", handleUpload);
+
+      log("Firebase 초기화 완료. CSV를 선택한 뒤 [업로드 시작]을 눌러주세요.");
+    </script>
+  </body>
 </html>
